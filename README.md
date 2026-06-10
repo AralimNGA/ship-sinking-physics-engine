@@ -43,7 +43,12 @@ That's it: no `npm install`, no build step, no server.
 
 ## Screenshots
 
-![Ship sinking simulator](screenshots/demo.png)
+<table>
+  <tr>
+    <td align="center"><img src="screenshots/demo.png"><br><sub>Rigid-body mode — Titanic-class hull with live stability stats</sub></td>
+    <td align="center"><img src="screenshots/demo2.png"><br><sub>Soft-body sandbox — punch holes, flood, drop bombs, fire cannons</sub></td>
+  </tr>
+</table>
 
 ## Project Status
 
