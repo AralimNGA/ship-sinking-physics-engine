@@ -43,7 +43,7 @@ That's it: no `npm install`, no build step, no server.
 
 ## Screenshots
 
-_Screenshots / GIFs to be added._
+![Ship sinking simulator](screenshots/demo.png)
 
 ## Project Status
 
