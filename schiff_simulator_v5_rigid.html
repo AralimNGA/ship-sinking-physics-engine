@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚓ Schiffssink-Simulator — Hydrostatik · Struktur · Seegang</title>
+<style>
+  :root{
+    --bg:#070b11; --panel:#101620; --panel2:#18212e; --line:#26303f;
+    --txt:#d3e2f3; --muted:#7c90a8; --accent:#3bb6ff; --good:#3ddc84;
+    --warn:#ffb24d; --bad:#ff5566;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  #app{display:flex;height:100vh;}
+  #stage{flex:1;position:relative;min-width:0;}
+  canvas{display:block;width:100%;height:100%;}
+  #side{width:330px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+    overflow-y:auto;padding:14px 14px 60px;}
+  h1{font-size:15px;margin:0 0 2px;}
+  .sub{font-size:11px;color:var(--muted);margin-bottom:13px;}
+  .grp{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:11px;}
+  .grp h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 9px;font-weight:600;}
+  label{font-size:12px;display:block;margin-bottom:3px;}
+  input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0 4px;}
+  .row{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin:3px 0;}
+  .row .v{font-variant-numeric:tabular-nums;font-weight:600;}
+  select{width:100%;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:7px 8px;font-size:13px;}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:5px;}
+  button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:8px;font-size:12px;cursor:pointer;transition:.12s;font-family:inherit;}
+  button:hover{border-color:var(--accent);color:#fff;}
+  button.act{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600;}
+  button.danger:hover{border-color:var(--bad);color:var(--bad);}
+  .tool{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .tool button{padding:6px 2px;font-size:10.5px;}
+  .stat{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+  .stat:last-child{border:none;}
+  .stat b{font-variant-numeric:tabular-nums;font-weight:600;}
+  #status{text-align:center;font-weight:700;font-size:14px;padding:9px;border-radius:8px;margin-bottom:11px;letter-spacing:.4px;border:1px solid var(--good);color:var(--good);background:rgba(255,255,255,.04);}
+  .bar{height:7px;background:#0a121c;border-radius:4px;overflow:hidden;margin-top:3px;}
+  .bar>i{display:block;height:100%;border-radius:4px;transition:width .15s,background .3s;}
+  .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;}
+  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;background:var(--panel);border:1px solid var(--line);color:var(--muted);margin-left:6px;}
+  #log{font-size:11px;line-height:1.6;max-height:120px;overflow-y:auto;}
+  #log div{padding:1px 0;color:var(--muted);}
+  #log .ev{color:var(--txt);}
+  #log .crit{color:var(--bad);font-weight:600;}
+  #overlay{position:absolute;left:14px;top:14px;background:rgba(6,10,16,.7);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:12px;backdrop-filter:blur(6px);pointer-events:none;line-height:1.55;}
+  #overlay .k{color:var(--muted);} #overlay b{font-variant-numeric:tabular-nums;}
+  #toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:rgba(255,60,80,.92);color:#fff;font-weight:700;padding:9px 18px;border-radius:8px;font-size:15px;opacity:0;transition:opacity .3s;pointer-events:none;letter-spacing:.5px;}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="overlay"></div>
+    <div id="toast"></div>
+  </div>
+  <div id="side">
+    <h1>⚓ Schiffssink-Simulator</h1>
+    <div class="sub">Hydrostatik · Strukturbruch · Flutung · Seegang</div>
+    <div id="status">AFLOAT</div>
+
+    <div class="grp">
+      <h2>Schiff</h2>
+      <select id="shipSel"></select>
+      <div class="hint" id="shipInfo"></div>
+    </div>
+
+    <div class="grp">
+      <h2>Werkzeug — auf den Rumpf klicken</h2>
+      <div class="tool" id="toolRow">
+        <button data-r="0.12" class="act">Riss</button>
+        <button data-r="0.35">Leck</button>
+        <button data-r="0.8">Torpedo</button>
+        <button data-r="1.6">Mine</button>
+      </div>
+      <div class="hint">Auf den Rumpf klicken = Schaden (unter Wasser strömt Wasser ein ∝ √Tiefe). <b>In den Himmel über dem Schiff klicken = schweres Objekt drauf werfen</b> (Gewicht + evtl. Deckschaden).</div>
+    </div>
+
+    <div class="grp">
+      <h2>Beladung & Wetter</h2>
+      <label>Beladung <span class="badge" id="loadLbl">100 %</span></label>
+      <input type="range" id="load" min="100" max="165" step="1" value="100">
+      <label style="margin-top:7px">Windstärke <span class="badge" id="bfLbl">Bft 3</span></label>
+      <input type="range" id="wind" min="0" max="12" step="1" value="3">
+      <div class="row"><span>Wellenhöhe</span><span class="v" id="waveH">—</span></div>
+      <div class="row"><span>Windgeschw.</span><span class="v" id="windV">—</span></div>
+    </div>
+
+    <div class="grp">
+      <h2>Zustand</h2>
+      <div class="stat"><span>Tiefgang</span><b id="sDraft">—</b></div>
+      <div class="stat"><span>Trimm</span><b id="sTrim">—</b></div>
+      <div class="stat"><span>Verdrängung</span><b id="sDisp">—</b></div>
+      <div class="stat"><span>Flutwasser</span><b id="sFlood">—</b></div>
+      <div class="stat"><span>Metazentr. GM</span><b id="sGM">—</b></div>
+      <div class="stat"><span>Biegespannung</span><b id="sStress">—</b></div>
+      <label style="margin-top:9px">Auftriebsreserve</label>
+      <div class="bar"><i id="barReserve" style="background:var(--good);width:100%"></i></div>
+      <label style="margin-top:7px">Strukturbelastung</label>
+      <div class="bar"><i id="barStress" style="background:var(--good);width:0%"></i></div>
+      <label style="margin-top:7px">Geflutet</label>
+      <div class="bar"><i id="barFlood" style="background:var(--bad);width:0%"></i></div>
+    </div>
+
+    <div class="grp">
+      <h2>Ereignisse</h2>
+      <div id="log"></div>
+    </div>
+
+    <div class="grp">
+      <h2>Steuerung</h2>
+      <label>Zeitraffer <span class="badge" id="tsLbl">1.5×</span></label>
+      <input type="range" id="speed" min="0.25" max="6" step="0.25" value="1.5">
+      <div class="btns">
+        <button id="pause">⏸ Pause</button>
+        <button id="reset" class="danger">↺ Reset</button>
+      </div>
+      <div class="btns" style="margin-top:7px">
+        <button id="storm" class="danger">🌊 Orkan</button>
+        <button id="ballast">⚖ Lenzen</button>
+      </div>
+    </div>
+    <div class="hint"><kbd>Leer</kbd> Pause · <kbd>R</kbd> Reset · Klick = Schaden</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+//================================================================
+//  Konstanten
+//================================================================
+const RHO=1025, G=9.81, CD=0.62;
+let SEAFLOOR = -140;   // m (wird je Schiff angepasst)
+
+//================================================================
+//  Schiffstypen
+//  hullK = Rumpf-Festigkeitsfaktor (Bruchwiderstand)
+//================================================================
+const SHIPS=[
+ {id:"row",  name:"🚣 Ruderboot",      L:5,   B:1.7,D:1.1, T:0.34,Cb:0.45,KG:0.45,comp:3, bhFrac:1.0, hullK:0.9, style:"boat"},
+ {id:"traw", name:"🎣 Fischtrawler",   L:28,  B:7.5,D:4.2, T:3.1, Cb:0.55,KG:2.5, comp:7, bhFrac:0.95,hullK:0.85,style:"trawler"},
+ {id:"carg", name:"🛳 Stückgutfrachter",L:155, B:23, D:14.5,T:9.2, Cb:0.72,KG:7.6, comp:14,bhFrac:0.9, hullK:0.7, style:"cargo"},
+ {id:"cont", name:"📦 Containerschiff", L:330, B:48, D:26,  T:14.5,Cb:0.66,KG:15,  comp:20,bhFrac:0.85,hullK:0.72,style:"container"},
+ {id:"tita", name:"🚢 Titanic-Klasse",  L:269, B:28, D:20,  T:10.5,Cb:0.66,KG:9.2, comp:26,bhFrac:0.60,hullK:0.62,style:"liner"},
+ {id:"batt", name:"⚔ Schlachtschiff",  L:250, B:33, D:15,  T:10,  Cb:0.60,KG:6.0, comp:26,bhFrac:0.92,hullK:1.25,style:"warship"},
+ {id:"tank", name:"🛢 Supertanker",     L:333, B:60, D:30,  T:20,  Cb:0.82,KG:13,  comp:22,bhFrac:0.9, hullK:0.55,style:"tanker"},
+];
+
+//================================================================
+//  Welt-Zustand
+//================================================================
+let cv,ctx,W,H,DPR;
+let def, bodies=[], weather, ui, particles=[], fallObjects=[], cam, globalT=0;
+let logBuf=[];
+
+//================================================================
+//  Body-Erzeugung (ein ganzes Schiff = ein Body)
+//================================================================
+function makeBodyFromDef(d){
+  const N=160, L=d.L, dL=L/N;
+  const segs=[];
+  for(let i=0;i<N;i++){
+    const lx=-L/2+(i+0.5)*dL;
+    const t=2*lx/L;
+    // Wasserlinienbreite (voll mittschiffs, fein an den Enden)
+    let f=Math.pow(1-Math.pow(Math.abs(t),2.6),0.55);
+    if(t>0) f=Math.pow(1-Math.pow(Math.abs(t),2.1),0.5);   // Bug feiner
+    const beam=Math.max(0.03*d.B, d.B*f);
+    const keel=0.13*d.D*Math.pow(Math.abs(t),3);           // Aufkimmung
+    segs.push({lx,beam,keel});
+  }
+  // Auftriebsvolumen bei Tiefgang T — KIELAUFKIMMUNG berücksichtigen, damit
+  // das Schiff exakt bei T schwimmt (sonst zu tief).
+  let VsubRaw=0; for(const s of segs) VsubRaw+=s.beam*Math.max(0,d.T-s.keel)*dL;
+  const cbVol=(d.Cb*L*d.B*d.T)/VsubRaw;
+  const Vsub=cbVol*VsubRaw;
+  const m0=RHO*Vsub;                       // Leerschiff bei Normallast (Tiefgang T)
+
+  // Abteilungen
+  const nc=d.comp, cl=L/nc, comps=[];
+  for(let c=0;c<nc;c++){
+    const x0=-L/2+c*cl, x1=x0+cl;
+    let floor=0; for(const s of segs) if(s.lx>=x0&&s.lx<x1) floor+=s.beam*dL;
+    comps.push({x0,x1,xc:(x0+x1)/2,floor:Math.max(floor,.01),Vw:0,level:0,bh:d.bhFrac*d.D,openL:false,openR:false});
+  }
+  const b={
+    def:d, L, dL, segs, comps, holes:[], deckLoads:[], cbVol, KG:d.KG, m0, cargo:0,
+    gxC:0, worldX:0, Zc:-d.T, zV:0, th:0, thV:0, surgeV:0,
+    bowIntact:true, sternIntact:true, tearBow:null, tearStern:null,
+    fatigue:0, broken:false, sunk:false, rest:false,
+    _stress:0, _stressIdx:0, _stressX:0, _Vsubm:Vsub, _Awp:0, _KB:0,
+    _m:m0, _mFlood:0, _cgy:d.KG, _GM:0, _peakM:0, _Mult:1, _maxFree:d.D-d.T,
+  };
+  b._Mult = hullStrength(b);
+  return b;
+}
+function hullStrength(b){
+  // Bruchmoment ~ Festigkeit * Querschnittsmodul, kalibriert über hullK.
+  // Skala: Stahlmasse · g · Länge  (natürliches Momentmaß)
+  return 0.120 * b.def.hullK * b.m0 * G * b.L;
+}
+function bodyLightAndCargo(b){ return b.m0*(1+b.cargo); }
+
+//================================================================
+//  Wetter & Wellen (mehrere Gerstner-Komponenten)
+//================================================================
+function makeWeather(bft){
+  const windTbl=[0.5,1.5,3.3,5.5,8,10.8,13.9,17.2,20.7,24.5,28.5,32.7,38];
+  const U=windTbl[bft];
+  const Hs=Math.min(14,0.022*U*U);
+  const comps=[];
+  const base=Math.max(0.04,Hs/2);
+  const lamMain=Math.max(6, 0.62*U*U/G*6 + 14);
+  const setup=[[1.0,1.0,0.0],[0.55,0.62,1.7],[0.34,1.55,3.1],[0.2,0.33,4.5]];
+  for(const[a,lf,ph] of setup){
+    const lam=Math.max(3,lamMain*lf);
+    comps.push({amp:base*a,k:2*Math.PI/lam,w:Math.sqrt(G*2*Math.PI/lam),ph,steep:Math.min(0.85,0.5+bft*0.04)});
+  }
+  return {bft,U,Hs,comps};
+}
+function seaY(x,t){
+  let y=0;
+  for(const c of weather.comps){
+    // Gerstner: schärfere Kämme, flachere Täler
+    const ph=c.k*x - c.w*t + c.ph;
+    y += c.amp*Math.sin(ph) - c.steep*c.amp*0.5*Math.cos(2*ph)*0.5;
+  }
+  return y;
+}
+function seaSlope(x,t){ return (seaY(x+0.5,t)-seaY(x-0.5,t)); }
+
+//================================================================
+//  Physik: Lasten eines Body berechnen (Auftrieb, Moment, Biegung)
+//================================================================
+function computeBody(b,t){
+  const cth=Math.cos(b.th), sth=Math.sin(b.th);
+  const D=b.def.D;
+  // Massen je Station (Stahl beam-gewichtet + Ladung + Flutwasser)
+  const n=b.segs.length;
+  let sumBeam=0; for(const s of b.segs) sumBeam+=s.beam;
+  // Ladungsprofil: schwer mittschiffs konzentriert -> erzeugt lastabhängiges
+  // Sagging-Grundmoment (ungleiche Lastverteilung = Kernursache für Bruch)
+  const prof=b.segs.map(s=>{const t=2*s.lx/b.L; return Math.max(0,1-t*t);});
+  let sumProf=0; for(const v of prof) sumProf+=v; sumProf=sumProf||1;
+  // Flutwasser pro Station vorbereiten
+  const floodPer=new Array(n).fill(0);
+  for(const c of b.comps){
+    if(c.Vw<=0) continue;
+    let sb=0; const idx=[];
+    for(let i=0;i<n;i++){ const lx=b.segs[i].lx; if(lx>=c.x0&&lx<c.x1){idx.push(i);sb+=b.segs[i].beam;} }
+    const fm=RHO*c.Vw;
+    for(const i of idx) floodPer[i]+=fm*(b.segs[i].beam/(sb||1));
+  }
+  let Fb=0,Qth_b=0,VsubT=0,Awp=0,kbNum=0,mFlood=0,mx=0,my=0;
+  const dFb=new Array(n),mass=new Array(n);
+  for(let i=0;i<n;i++){
+    const s=b.segs[i];
+    const wy0=b.Zc+s.lx*sth+s.keel*cth;
+    const wx=b.worldX+s.lx*cth - s.keel*sth;
+    const sea=seaY(wx,t);
+    let h=sea-wy0; if(h<0)h=0; if(h>D)h=D;
+    const dV=s.beam*h*b.dL*b.cbVol;
+    const f=RHO*G*dV;
+    dFb[i]=f; Fb+=f; Qth_b+=f*(s.lx*cth);
+    VsubT+=dV; kbNum+=dV*(s.keel+h/2);
+    if(h>0&&h<D) Awp+=s.beam*b.dL;
+    const hullW=b.m0*(s.beam/sumBeam);            // Stahl folgt dem Rumpf
+    const cargoW=b.m0*b.cargo*prof[i]/sumProf;    // Ladung mittschiffs
+    mass[i]=hullW+cargoW+floodPer[i];
+    mFlood+=floodPer[i];
+  }
+  // Deckslasten (geworfene Objekte) — Gewicht an ihrer Station, hoch am Deck
+  let dlTot=0,dlMx=0,dlMy=0;
+  if(b.deckLoads) for(const dlo of b.deckLoads){
+    let bi=0,bd=1e9; for(let i=0;i<n;i++){const dd=Math.abs(b.segs[i].lx-dlo.lx);if(dd<bd){bd=dd;bi=i;}}
+    mass[bi]+=dlo.mass; dlTot+=dlo.mass; dlMx+=dlo.mass*dlo.lx; dlMy+=dlo.mass*D;
+  }
+  const m=b.m0*(1+b.cargo)+mFlood+dlTot;
+  // Schwerpunkt
+  let cgx=0,cgy=0;
+  { // Stahl+Ladung bei (0,KG); Deckslasten hoch; Flutwasser je Abteilung
+    const dry=b.m0*(1+b.cargo);
+    let sx=dlMx,sy=dry*b.KG+dlMy;
+    for(const c of b.comps){ if(c.Vw>0){ const fm=RHO*c.Vw; sx+=fm*c.xc; sy+=fm*(c.level/2);} }
+    cgx=sx/m; cgy=sy/m;
+  }
+  // --- Biegemoment längs (mit Trägheitsentlastung) ---
+  // Rohe Last p = Auftrieb - Gewicht. Eine frei schwimmende Struktur ist nur
+  // dann ein selbst-ausgeglichener Balken, wenn die Starrkörper-Trägheit
+  // (Tauchen a + Stampfen α·lx) als d'Alembert-Last abgezogen wird, sodass
+  //   Σp' = 0  und  Σp'·lx = 0  (freie Enden -> Moment beginnt/endet bei 0).
+  let S0=0,S1=0,S2=0,R0=0,R1=0;
+  const p=new Array(n);
+  for(let i=0;i<n;i++){
+    const lx=b.segs[i].lx;
+    p[i]=dFb[i]-G*mass[i];
+    S0+=mass[i]; S1+=mass[i]*lx; S2+=mass[i]*lx*lx;
+    R0+=p[i];    R1+=p[i]*lx;
+  }
+  const det=S0*S2-S1*S1 || 1;
+  const A=(R0*S2-R1*S1)/det;     // lineare Beschleunigung (Entlastung)
+  const Bc=(S0*R1-S1*R0)/det;    // Winkelbeschleunigung
+  let shear=0,mom=0,peakM=0,peakI=0;
+  const Mline=new Array(n);
+  for(let i=0;i<n;i++){
+    const lx=b.segs[i].lx;
+    const q=p[i]-mass[i]*(A+Bc*lx);   // selbst-ausgeglichene Last
+    shear+=q*b.dL;
+    mom+=shear*b.dL;
+    Mline[i]=mom;
+    if(Math.abs(mom)>Math.abs(peakM)){peakM=mom;peakI=i;}
+  }
+  return {Fb,Qth_b,VsubT,Awp,KB:VsubT>0?kbNum/VsubT:0,m,mFlood,cgx,cgy,dFb,mass,Mline,peakM,peakI};
+}
+// effektive Bezugsmasse für Festigkeit
+function attachHelpers(b){ b._effM0=()=>b.m0; }
+
+//================================================================
+//  Integration eines Body (Heave + Pitch + Surge)
+//================================================================
+function integrateBody(b,h,t){
+  if(b.rest) return;
+  const L=computeBody(b,t);
+  b._Vsubm=L.VsubT; b._Awp=L.Awp; b._KB=L.KB; b._m=L.m; b._mFlood=L.mFlood; b._cgy=L.cgy;
+  b._peakM=L.peakM; b._peakI=L.peakI; b._Mline=L.Mline; b._dFb=L.dFb; b._mass=L.mass;
+
+  const cth=Math.cos(b.th), sth=Math.sin(b.th);
+  const Wt=L.m*G;
+  const Q_Z = L.Fb - Wt;
+  const Q_th= L.Qth_b - Wt*(L.cgx*cth - L.cgy*sth);
+  // Zusatzmasse (hydrodynamisch) -> realistische Eigenperioden ~6-10 s
+  const Mz=L.m*1.55;
+  const I = L.m*(b.L*b.L/12)*1.45 + 1;
+  const dm=1+10/b.L;                        // kleine Boote stärker dämpfen
+  // Dämpfung: linear (Wellenabstrahlung) + quadratisch (viskos/Wirbel)
+  const bz=0.50*L.m*dm,  bzq=0.16*L.m*dm;
+  const bth=0.50*I*dm,   bthq=0.16*I*dm;
+  const aZ=(Q_Z - bz*b.zV - bzq*b.zV*Math.abs(b.zV))/Mz;
+  const aT=(Q_th - bth*b.thV - bthq*b.thV*Math.abs(b.thV))/I;
+  b.zV+=aZ*h; b.Zc+=b.zV*h;
+  b.thV+=aT*h; b.th+=b.thV*h;
+  if(b.th>1.55)b.th=1.55; if(b.th<-1.55)b.th=-1.55;
+  // Surge (Auseinandertreiben der Bruchstücke), stark gedämpft
+  b.worldX+=b.surgeV*h; b.surgeV*=Math.pow(0.4,h);
+
+  // Bodenkontakt
+  const floorY=SEAFLOOR;
+  const keelWorld=b.Zc + lowestKeel(b);
+  if(keelWorld<=floorY+0.3){
+    b.Zc += (floorY+0.3 - keelWorld);
+    if(b.zV<0)b.zV*=-0.15;
+    b.thV*=0.6; b.surgeV*=0.5;
+    if(Math.abs(b.zV)<0.25 && Math.abs(b.thV)<0.05){ b.rest=true; b.zV=0; }
+  }
+}
+function lowestKeel(b){
+  // tiefster Hüllpunkt, vertikaler Versatz relativ zum Body-Ursprung
+  let m=1e9; const sth=Math.sin(b.th),cth=Math.cos(b.th);
+  for(const s of b.segs){ const wy=s.lx*sth+s.keel*cth; if(wy<m)m=wy; }
+  return m;
+}
+
+//================================================================
+//  Flutung (Torricelli + progressive Flutung + offene Bruchkanten)
+//================================================================
+function floodBody(b,dt,t){
+  const cth=Math.cos(b.th),sth=Math.sin(b.th),D=b.def.D;
+  // Einzel-Lecks
+  for(const ho of b.holes){
+    const wy=b.Zc+ho.lx*sth+ho.ly*cth;
+    const wx=b.worldX+ho.lx*cth-ho.ly*sth;
+    const sea=seaY(wx,t);
+    const c=b.comps[ho.comp]; if(!c)continue;
+    const head=(sea-wy)-(c.level-ho.ly);
+    if(Math.abs(head)>1e-4){
+      const v=Math.sign(head)*CD*Math.sqrt(2*G*Math.abs(head));
+      c.Vw=Math.max(0,c.Vw+v*ho.area*dt);
+      if(v>0 && Math.random()<0.5) spawnSplash(wx,sea,v);
+    }
+  }
+  for(let i=0;i<b.comps.length;i++){
+    const c=b.comps[i];
+    const wxc=b.worldX+c.xc*cth, sea=seaY(wxc,t);
+    const wyDeck=b.Zc+c.xc*sth+D*cth;
+    // Offene Bruchkanten fluten schnell (ungeschützte Öffnung zur See)
+    if(c.openL||c.openR){
+      const head=sea-(b.Zc+c.xc*sth+0.5*cth);
+      if(head>0){ c.Vw+=CD*0.6*c.floor*Math.sqrt(2*G*head)*dt; if(Math.random()<0.3)spawnSplash(wxc,sea,3);}
+    }
+    // Deck-Down-Flooding NUR wenn die Abteilung bereits stark geflutet ist:
+    // ein intaktes, wetterdichtes Deck lässt Wasser ablaufen (Speigatten) und
+    // flutet den Rumpf NICHT — erst eine bereits absaufende Abteilung nimmt
+    // über die überspülten Luken/Lüfter weiter Wasser auf.
+    else if(c.level>0.55*D && sea>wyDeck){
+      c.Vw+=CD*0.25*c.floor*Math.sqrt(2*G*(sea-wyDeck))*dt;
+    }
+    c.level=c.Vw/c.floor;
+    if(c.level>D){c.level=D;c.Vw=D*c.floor;}
+  }
+  // Progressive Flutung über Schotten
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<b.comps.length;i++){
+      const c=b.comps[i];
+      if(c.level>c.bh){
+        const exV=(c.level-c.bh)*c.floor;
+        const nb=[]; if(i>0)nb.push(b.comps[i-1]); if(i<b.comps.length-1)nb.push(b.comps[i+1]);
+        const recv=nb.filter(x=>x.level<c.level);
+        if(recv.length){ const give=exV*0.5; c.Vw-=give; for(const x of recv)x.Vw+=give/recv.length; }
+      }
+      c.level=c.Vw/c.floor;
+    }
+  }
+}
+
+//================================================================
+//  Stabilität + Sink-/Kenter-Erkennung
+//================================================================
+function stabilityBody(b,t){
+  let IT=0;
+  for(const s of b.segs){
+    const wy0=b.Zc+s.lx*Math.sin(b.th)+s.keel*Math.cos(b.th);
+    const sea=seaY(b.worldX+s.lx*Math.cos(b.th),t);
+    const h=sea-wy0; if(h>0&&h<b.def.D) IT+=Math.pow(s.beam,3)/12*b.dL;
+  }
+  const V=Math.max(1,b._Vsubm);
+  const BM=IT/V;
+  let fsi=0;
+  for(const c of b.comps) if(c.level>0.02&&c.level<b.def.D-0.02){ const w=c.floor/(c.x1-c.x0); fsi+=Math.pow(w,3)/12*(c.x1-c.x0); }
+  const fs=(RHO*fsi)/(b._m||1);
+  b._GM=b._KB+BM-b._cgy-fs;
+
+  // höchster Freibord
+  let mf=-1e9;
+  for(const s of b.segs){ const wyDeck=b.Zc+s.lx*Math.sin(b.th)+b.def.D*Math.cos(b.th); const sea=seaY(b.worldX+s.lx*Math.cos(b.th),t); mf=Math.max(mf,wyDeck-sea); }
+  b._maxFree=mf;
+  if(mf<-0.4 && b.zV<0.05 && !b.sunk){ b.sunk=true; }
+}
+
+//================================================================
+//  Strukturbruch
+//================================================================
+function checkBreak(b,dt){
+  if(b.broken||b.sunk||b.rest) return null;
+  if(b.L<22 || b.segs.length<14) return null;   // sehr kurze Stücke brechen nicht mehr
+  // lokale Schwächung durch Lecks nahe Spannungsmaximum
+  const px=b.segs[b._peakI].lx;
+  let weaken=0;
+  for(const ho of b.holes){ if(Math.abs(ho.lx-px)<b.L*0.12) weaken+=ho.area; }
+  // Festigkeit sinkt mit Beladung (weniger Reserve) und Lecks
+  const Mult=b._Mult*(1-Math.min(0.6,weaken*0.15))*(1-0.15*b.cargo);
+  // Bedarf = Wellenbiegung (Rumpf×Seegang) + Überladungsbeitrag.
+  // Überladung ist bei ruhiger See harmlos, im Seegang aber gefährlich:
+  // weniger Reserve/Freibord -> der Term wächst mit Hs.
+  const scale=b.m0*G*b.L;
+  const stormF=Math.min(1, weather.Hs/14);
+  const demandExtra=scale*b.cargo*(0.015 + 0.050*stormF);
+  const demand=Math.abs(b._peakM) + demandExtra;
+  const ratio=demand/Mult;
+  b._ratio=ratio;
+  // Ermüdung (erst nahe der Grenze)
+  if(ratio>0.90){ b.fatigue=Math.min(1,b.fatigue+(ratio-0.90)*dt*0.6); }
+  else b.fatigue=Math.max(0,b.fatigue-dt*0.12);
+  if(ratio*(1+b.fatigue*0.6) <= 1.0) return null;
+  // --- Bruchstellen bestimmen: ALLE lokalen Maxima von |Mline| über der
+  //     effektiven Grenze (mehrere Wellenknoten -> mehrere Brüche) ---
+  const thr=Math.max(0.05*b._Mult, (Mult-demandExtra)/(1+b.fatigue*0.6));
+  const M=b._Mline, nn=M.length, cand=[];
+  for(let i=3;i<nn-3;i++){ const a=Math.abs(M[i]);
+    if(a>thr && a>=Math.abs(M[i-1]) && a>=Math.abs(M[i+1]) && a>=Math.abs(M[i-2]) && a>=Math.abs(M[i+2]))
+      cand.push({lx:b.segs[i].lx,m:a}); }
+  if(!cand.length) cand.push({lx:px,m:Math.abs(b._peakM)});
+  cand.sort((x,y)=>y.m-x.m);
+  const cuts=[], minSep=b.L*0.15;
+  for(const c of cand){ if(cuts.every(q=>Math.abs(q-c.lx)>minSep)){ cuts.push(c.lx); if(cuts.length>=4)break; } }
+  return cuts;
+}
+
+function splitBody(b,cuts){
+  // cuts: Array lokaler Bruch-lx -> Schiff in (cuts+1) Teile zerlegen
+  const cth=Math.cos(b.th),sth=Math.sin(b.th);
+  const gmin=b.gxC+b.segs[0].lx, gmax=b.gxC+b.segs[b.segs.length-1].lx;
+  const gcuts=cuts.map(lx=>b.gxC+lx).filter(g=>g>gmin+b.dL && g<gmax-b.dL).sort((a,c)=>a-c);
+  // Grenzen der Teilstücke
+  const bounds=[gmin, ...gcuts, gmax];
+  const made=[];
+  for(let pi=0; pi<bounds.length-1; pi++){
+    const lo=bounds[pi], hi=bounds[pi+1];
+    const leftCut=(pi>0), rightCut=(pi<bounds.length-2);
+    const pseg=[];
+    for(const s of b.segs){ const glx=b.gxC+s.lx; if(glx>=lo-1e-6 && glx<hi+1e-6) pseg.push({glx,beam:s.beam,keel:s.keel}); }
+    if(pseg.length<3) continue;
+    const gmn=pseg[0].glx, gmx=pseg[pseg.length-1].glx, gc=(gmn+gmx)/2;
+    const segs=pseg.map(s=>({lx:s.glx-gc,beam:s.beam,keel:s.keel}));
+    const Llen=Math.max(b.dL, gmx-gmn), frac=Llen/b.L;
+    // Abteilungen anteilig
+    const comps=[];
+    for(const c of b.comps){ const cg0=b.gxC+c.x0, cg1=b.gxC+c.x1;
+      const a=Math.max(cg0,gmn), z=Math.min(cg1,gmx);
+      if(z-a>0.1){ const fr=(z-a)/(cg1-cg0);
+        comps.push({x0:a-gc,x1:z-gc,xc:(a+z)/2-gc,floor:Math.max(.01,c.floor*fr),Vw:c.Vw*fr,level:c.level,bh:c.bh,openL:false,openR:false}); } }
+    if(comps.length){ if(leftCut)comps[0].openL=true; if(rightCut)comps[comps.length-1].openR=true; }
+    // Lecks
+    const holes=[];
+    for(const ho of b.holes){ const glx=b.gxC+ho.lx; if(glx>=gmn&&glx<=gmx){
+      let ci=0; for(let k=0;k<comps.length;k++){ if(glx-gc>=comps[k].x0&&glx-gc<comps[k].x1){ci=k;break;} }
+      holes.push({lx:glx-gc,ly:ho.ly,comp:ci,r:ho.r,area:ho.area}); } }
+    // Deckslasten
+    const deckLoads=[];
+    if(b.deckLoads) for(const dlo of b.deckLoads){ const glx=b.gxC+dlo.lx; if(glx>=gmn&&glx<=gmx) deckLoads.push({lx:glx-gc,mass:dlo.mass,size:dlo.size,type:dlo.type}); }
+    const nb={
+      def:b.def,L:Llen,dL:b.dL,segs,comps,holes,deckLoads,cbVol:b.cbVol,KG:b.KG,
+      m0:b.m0*frac,cargo:b.cargo,gxC:gc,
+      worldX:b.worldX+gc*cth, Zc:b.Zc+gc*sth, zV:b.zV+gc*cth*b.thV, th:b.th, thV:b.thV,
+      surgeV:b.surgeV+(gc-b.gxC)*0.04+(Math.sin(pi*2.1))*0.6,
+      bowIntact:(!rightCut && b.bowIntact), sternIntact:(!leftCut && b.sternIntact),
+      tearBow:(rightCut?makeTear():b.tearBow), tearStern:(leftCut?makeTear():b.tearStern),
+      fatigue:0,broken:false,sunk:false,rest:false,
+      _stress:0,_Vsubm:1,_Awp:0,_KB:0,_m:1,_mFlood:0,_cgy:b.KG,_GM:0,_peakM:0,_peakI:0,_maxFree:0,_ratio:0,
+    };
+    attachHelpers(nb); nb._Mult=hullStrength(nb);
+    made.push(nb);
+  }
+  // Trümmer + Gischt an jeder Bruchstelle
+  for(const g of gcuts){ const lx=g-b.gxC; const bx=b.worldX+lx*cth, by=b.Zc+lx*sth+b.def.D*0.4;
+    for(let k=0;k<32;k++) spawnDebris(bx,by); for(let k=0;k<24;k++) spawnSplash(bx,by,6); }
+  return made;
+}
+function makeTear(){ return {seed:Math.random()*1000, jag:0.5+Math.random()*0.5}; }
+
+//================================================================
+//  Partikel
+//================================================================
+function spawnSplash(x,y,v){ particles.push({type:'spray',x,y,vx:(Math.random()-0.5)*v*0.8,vy:-Math.abs(v)*(0.4+Math.random()*0.6),life:1,r:0.3+Math.random()*0.7}); }
+function spawnBubble(x,y){ particles.push({type:'bubble',x,y,vx:(Math.random()-0.5)*0.5,vy:1.2+Math.random()*1.5,life:1,r:0.2+Math.random()*0.6}); }
+function spawnDebris(x,y){ particles.push({type:'debris',x,y,vx:(Math.random()-0.5)*4,vy:-Math.random()*3,life:1,r:0.5+Math.random()*1.8,rot:Math.random()*6,vr:(Math.random()-0.5)*4,col:Math.random()<0.5?'#3a4452':'#5a4a32'}); }
+function spawnFoam(x,y){ particles.push({type:'foam',x,y,vx:(Math.random()-0.5)*1.5,vy:-Math.random()*1.2,life:1,r:0.4+Math.random()*1.2}); }
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    if(p.type==='bubble'){ p.y+=p.vy*dt; p.x+=p.vx*dt; p.life-=dt*0.4; const s=seaY(p.x,globalT); if(p.y>=s){particles.splice(i,1);continue;} }
+    else if(p.type==='debris'){ p.vy+= (p.y< seaY(p.x,globalT)? -3 : 9)*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.99; if(p.y>seaY(p.x,globalT)){p.vy*=0.4;p.vx*=0.9;} p.rot+=p.vr*dt; p.life-=dt*0.06; }
+    else { p.vy+=9.5*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt*0.9; if(p.type==='spray'&&p.y>seaY(p.x,globalT)){spawnFoam(p.x,p.y);particles.splice(i,1);continue;} }
+    if(p.life<=0) particles.splice(i,1);
+  }
+  if(particles.length>1400) particles.splice(0,particles.length-1400);
+}
+
+//================================================================
+//  Simulationsschritt
+//================================================================
+function step(dt){
+  globalT+=dt;
+  const sub=6,h=dt/sub;
+  for(const b of bodies){
+    for(let s=0;s<sub;s++) integrateBody(b,h,globalT);
+    floodBody(b,dt,globalT);
+    stabilityBody(b,globalT);
+  }
+  // Brüche
+  const newBodies=[];
+  let broke=false;
+  for(const b of bodies){
+    const cuts=checkBreak(b,dt);
+    if(cuts && cuts.length){
+      const made=splitBody(b,cuts);
+      if(made.length>=2){ b.broken=true; newBodies.push(...made); broke=true;
+        addLog(`💥 RUMPF ZERBRICHT in ${made.length} Teile!`,'crit'); toast(made.length>2?`BRICHT IN ${made.length} TEILE!`:'RUMPF BRICHT!'); }
+      else newBodies.push(b);
+    } else newBodies.push(b);
+  }
+  bodies=newBodies;
+  // Blasen bei sinkenden/getauchten Teilen
+  for(const b of bodies){ if(!b.rest && b._maxFree<2){ for(const c of b.comps){ if(c.Vw>0 && Math.random()<0.25){ const wx=b.worldX+c.xc*Math.cos(b.th); const sea=seaY(wx,globalT); const wyDeck=b.Zc+c.xc*Math.sin(b.th)+b.def.D*Math.cos(b.th); if(wyDeck<sea) spawnBubble(wx, wyDeck);} } } }
+  // Gischt auf Wellenkämmen bei Sturm
+  if(cam && weather.bft>=7 && Math.random()<weather.bft*0.04){ const cx=cam.cx+(Math.random()-0.5)*W/cam.scale; spawnFoam(cx,seaY(cx,globalT)); }
+  updateFallObjects(dt);
+  updateParticles(dt);
+  trackEvents();
+}
+
+//================================================================
+//  Ereignis-Erkennung für Log
+//================================================================
+let evState={flooded:new Set(),sinkAnnounced:false};
+function trackEvents(){
+  for(const b of bodies){
+    for(let i=0;i<b.comps.length;i++){ const c=b.comps[i]; const key=b.gxC.toFixed(0)+'_'+i;
+      if(c.level>0.5 && !evState.flooded.has(key)){ evState.flooded.add(key); } }
+    if(b.sunk && !b._announced){ b._announced=true; addLog('⚓ Schiffsteil gesunken','crit'); }
+  }
+}
+
+//================================================================
+//  Rendering
+//================================================================
+function resize(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  const r=cv.parentElement.getBoundingClientRect(); W=r.width;H=r.height;
+  cv.width=W*DPR;cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+function fitCamera(dt){
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  for(const b of bodies){
+    const cth=Math.cos(b.th),sth=Math.sin(b.th);
+    for(const s of b.segs){
+      for(const ly of [s.keel,b.def.D]){
+        const wx=b.worldX+s.lx*cth-ly*sth, wy=b.Zc+s.lx*sth+ly*cth;
+        minX=Math.min(minX,wx);maxX=Math.max(maxX,wx);
+        minY=Math.min(minY,wy);maxY=Math.max(maxY,wy);
+      }
+    }
+    // Aufbauten/Masten oben einbeziehen, damit sie nicht abgeschnitten werden
+    maxY=Math.max(maxY, b.Zc + b.def.D*2.35*cth);
+  }
+  if(minX>maxX){minX=-def.L/2;maxX=def.L/2;minY=-def.T;maxY=def.D;}
+  maxY=Math.max(maxY, weather.Hs*0.8+2);
+  const padX=(maxX-minX)*0.10+12, padY=(maxY-minY)*0.10+8;
+  const exX=(maxX-minX)+2*padX, exY=(maxY-minY)+2*padY;
+  let scale=Math.min(W*0.96/exX, H*0.90/exY);
+  scale=Math.min(scale, (W*0.96)/(def.L*1.45));    // angenehme Distanz
+  scale=Math.min(scale, 9);                         // kleine Boote nicht riesig
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+  if(!cam){cam={scale,cx,cy};}
+  const k=1-Math.pow(0.0001,dt);
+  cam.scale+=(scale-cam.scale)*k;
+  cam.cx+=(cx-cam.cx)*k;
+  cam.cy+=(cy-cam.cy)*k;
+}
+function W2S(wx,wy){ return [W/2+(wx-cam.cx)*cam.scale, H/2-(wy-cam.cy)*cam.scale]; }
+
+function draw(dt){
+  fitCamera(dt||0.016);
+  const storm=weather.bft/12;
+  // Himmel
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  const horizonScreen=W2S(0,0)[1];
+  sky.addColorStop(0,mix("#0a1d3a","#161c26",storm));
+  sky.addColorStop(Math.max(0,Math.min(1,horizonScreen/H)), mix("#3b6ea5","#3a4250",storm));
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  // Sonne/Wolken
+  if(storm<0.5){ const sx=W*0.8,sy=H*0.18; const g=ctx.createRadialGradient(sx,sy,0,sx,sy,120); g.addColorStop(0,`rgba(255,245,210,${0.9-storm})`);g.addColorStop(1,'rgba(255,245,210,0)'); ctx.fillStyle=g; ctx.fillRect(sx-130,sy-130,260,260);}
+  drawClouds(storm);
+  // Wasserkörper (Tiefen-Gradient) bis Meeresgrund
+  drawWaterColumn(storm);
+  drawLightShafts(storm);
+  drawSeafloor();
+  // Unterwasser-Partikel hinter Schiff (Blasen/Trümmer)
+  drawParticles('back');
+  // Schiffe
+  for(const b of bodies) drawBody(b);
+  // Wasseroberfläche (vor Rumpf, halbtransparent)
+  drawSeaSurface(storm);
+  // Geworfene Fallobjekte (in der Luft)
+  drawFallObjects();
+  // Vordergrund-Partikel (Gischt)
+  drawParticles('front');
+  if(weather.bft>=8) drawRain(storm);
+  updateHUD();
+}
+
+function drawClouds(storm){
+  ctx.save();
+  const n=4+Math.floor(storm*6);
+  for(let i=0;i<n;i++){
+    const x=((i*263+globalT*(6+storm*30))% (W+400))-200;
+    const y=H*0.10+ (i%3)*30;
+    const a=0.12+storm*0.4;
+    ctx.fillStyle=`rgba(${storm>0.5?60:230},${storm>0.5?68:235},${storm>0.5?80:245},${a})`;
+    ctx.beginPath();
+    for(let k=0;k<5;k++) ctx.arc(x+k*34,y+(k%2)*10,30+ (k%2)*8,0,7);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawWaterColumn(storm){
+  const top=W2S(0,weather.Hs+2)[1];
+  const bot=W2S(0,SEAFLOOR)[1];
+  const g=ctx.createLinearGradient(0,top,0,Math.max(bot,top+10));
+  g.addColorStop(0,mix("#1f7bb0","#11455f",storm));
+  g.addColorStop(0.25,mix("#155f8c","#0e3850",storm));
+  g.addColorStop(0.7,"#0a2c44");
+  g.addColorStop(1,"#06182a");
+  ctx.fillStyle=g; ctx.fillRect(0,top,W,H-top);
+}
+function drawLightShafts(storm){
+  if(storm>0.6)return;
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  const surfY=W2S(0,0)[1];
+  for(let i=0;i<7;i++){
+    const x=((i*180+ (globalT*8))% (W+300))-150;
+    ctx.beginPath();
+    ctx.moveTo(x,surfY); ctx.lineTo(x+40,surfY); ctx.lineTo(x+160,H); ctx.lineTo(x+60,H); ctx.closePath();
+    ctx.fillStyle=`rgba(120,200,230,${0.05*(1-storm)})`; ctx.fill();
+  }
+  ctx.restore();
+}
+function drawSeafloor(){
+  const fy=W2S(0,SEAFLOOR)[1];
+  if(fy>H+50)return;
+  const g=ctx.createLinearGradient(0,fy-30,0,H);
+  g.addColorStop(0,"#0a1f2e"); g.addColorStop(0.3,"#243a2c"); g.addColorStop(1,"#1a2a1e");
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.moveTo(0,H);
+  let first=true;
+  for(let sx=0;sx<=W;sx+=20){
+    const wx=cam.cx+(sx-W/2)/cam.scale;
+    const dune=Math.sin(wx*0.03)*2+Math.sin(wx*0.011+1.3)*4+Math.sin(wx*0.07)*1;
+    const sy=W2S(0,SEAFLOOR+dune)[1];
+    if(first){ctx.lineTo(0,sy);first=false;} ctx.lineTo(sx,sy);
+  }
+  ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+  // Felsen & Algen (deterministisch)
+  for(let i=0;i<26;i++){
+    const wx=(i*53.7)-700 + Math.floor(cam.cx/1400)*1400;
+    const r=8+((i*37)%18);
+    const dune=Math.sin(wx*0.03)*2+Math.sin(wx*0.011+1.3)*4;
+    const p=W2S(wx,SEAFLOOR+dune+ r*0.05/ cam.scale);
+    if(p[0]<-50||p[0]>W+50)continue;
+    ctx.fillStyle="#1c2b22";
+    ctx.beginPath(); ctx.ellipse(p[0],p[1]-r*0.3,r,r*0.6,0,Math.PI,0); ctx.fill();
+    if(i%3===0){ ctx.strokeStyle="rgba(60,120,80,.5)";ctx.lineWidth=2;
+      for(let k=-2;k<=2;k++){ctx.beginPath();ctx.moveTo(p[0]+k*4,p[1]);ctx.quadraticCurveTo(p[0]+k*4+Math.sin(globalT*2+i+k)*6,p[1]-25,p[0]+k*4+Math.sin(globalT*2+i+k)*3,p[1]-45);ctx.stroke();} }
+  }
+}
+
+//================================================================
+//  Rumpf eines Body zeichnen (Detail + Schaden + Flutung + Spannung)
+//================================================================
+function bodyTF(b){
+  const cth=Math.cos(b.th),sth=Math.sin(b.th);
+  return (lx,ly)=>{ const wx=b.worldX+lx*cth-ly*sth, wy=b.Zc+lx*sth+ly*cth; return W2S(wx,wy); };
+}
+function hullPath(b){
+  const D=b.def.D, segs=b.segs, n=segs.length, pts=[];
+  const sheer=(t)=> 0.05*D*Math.pow(Math.abs(t),2) + (t>0.7?0.12*D*(t-0.7)/0.3:0);
+  const bow=segs[n-1], stern=segs[0];
+  // 1) Kiel unten: Heck -> Bug
+  for(let i=0;i<n;i++){ pts.push([segs[i].lx, segs[i].keel]); }
+  // 2) Bug-Kappe: Kiel -> Deck (intakt = Steven, sonst gezackte Bruchkante)
+  if(b.bowIntact){ pts.push([bow.lx+b.dL*0.7, D*0.40]); pts.push([bow.lx+b.dL*0.45, D+sheer(1)]); }
+  else pushTear(pts,b,bow,1,b.tearBow,true);
+  // 3) Deck oben: Bug -> Heck
+  for(let i=n-1;i>=0;i--){ const t=2*segs[i].lx/b.L; pts.push([segs[i].lx, D+sheer(t)]); }
+  // 4) Heck-Kappe: Deck -> Kiel
+  if(b.sternIntact){ pts.push([stern.lx-b.dL*0.45, D+sheer(-1)]); pts.push([stern.lx-b.dL*0.5, stern.keel+D*0.33]); }
+  else pushTear(pts,b,stern,-1,b.tearStern,false);
+  return pts;
+}
+// gezackte Bruchkante; fromKeel=true: Kiel->Deck, sonst Deck->Kiel
+function pushTear(pts,b,seg,dir,tear,fromKeel){
+  const D=b.def.D, n=10, sd=tear?tear.seed:1, jagF=(tear?tear.jag:0.7);
+  for(let k=0;k<=n;k++){ const f=k/n; const fr=fromKeel? f : 1-f;
+    const ly=seg.keel + (D-seg.keel)*fr;
+    const jag=(Math.sin(sd+k*2.3)*0.5+0.5)*jagF*b.dL*2.6 + (k%2?b.dL*0.6:0);
+    pts.push([seg.lx+dir*(0.1+jag), ly]); }
+}
+function drawBody(b){
+  const tf=bodyTF(b), D=b.def.D, T=b.def.T;
+  const path=hullPath(b);
+  ctx.save();
+  ctx.beginPath();
+  path.forEach((p,i)=>{const s=tf(p[0],p[1]); i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1]);});
+  ctx.closePath();
+  ctx.save(); ctx.clip();
+
+  // Rumpf: Unterwasser (rot) + Überwasser (dunkel)
+  const a=tf(0,0),bb=tf(0,D);
+  const hg=ctx.createLinearGradient(a[0],a[1],bb[0],bb[1]);
+  hg.addColorStop(0,"#7a2418"); hg.addColorStop(Math.max(0,Math.min(1,1-T/D)),"#8a2a1c");
+  hg.addColorStop(Math.max(0,Math.min(1,1-T/D)),"#2b3440"); hg.addColorStop(1,"#3c4856");
+  ctx.fillStyle=hg; ctx.fillRect(0,0,W,H);
+  // Plattengänge (horizontale Linien)
+  ctx.strokeStyle="rgba(0,0,0,.18)"; ctx.lineWidth=1;
+  for(let ly=1;ly<D;ly+=Math.max(1.2,D/14)){ ctx.beginPath(); let f=true; for(const s of b.segs){const p=tf(s.lx,ly); if(f){ctx.moveTo(p[0],p[1]);f=false;}else ctx.lineTo(p[0],p[1]);} ctx.stroke(); }
+  // Boot-Topping (Wasserlinienstreifen)
+  ctx.strokeStyle="#d8d2c0"; ctx.lineWidth=Math.max(2,0.5*cam.scale);
+  ctx.beginPath(); let f=true; for(const s of b.segs){const p=tf(s.lx,T); if(f){ctx.moveTo(p[0],p[1]);f=false;}else ctx.lineTo(p[0],p[1]);} ctx.stroke();
+  // Bullaugen (mehrere Reihen, mit Rahmen)
+  if(D>3){
+    const rows=D>16?3:D>8?2:1;
+    for(let r=0;r<rows;r++){
+      const ly=D*(0.52+r*0.135);
+      for(let lx=-b.L/2+b.L*0.07; lx<b.L/2-b.L*0.06; lx+=Math.max(2.0,b.L/60)){
+        const p=tf(lx,ly); const rr=Math.max(1,cam.scale*0.26);
+        ctx.fillStyle="rgba(12,18,28,.92)"; ctx.beginPath();ctx.arc(p[0],p[1],rr,0,7);ctx.fill();
+        ctx.strokeStyle="rgba(150,168,190,.45)";ctx.lineWidth=Math.max(.6,cam.scale*0.05);ctx.stroke();
+      }
+    }
+  }
+
+  // --- Flutwasser je Abteilung (world-horizontale Oberfläche) ---
+  for(const c of b.comps){ if(c.Vw<=0.01)continue;
+    const cth=Math.cos(b.th),sth=Math.sin(b.th);
+    const yTop=b.Zc+c.xc*sth+c.level*cth;
+    const lyL=(yTop-b.Zc-c.x0*sth)/cth, lyR=(yTop-b.Zc-c.x1*sth)/cth;
+    const p1=tf(c.x0,Math.max(0,c.x0===c.x0?0:0)), q1=tf(c.x0,0),q2=tf(c.x1,0),q3=tf(c.x1,Math.max(0.02,lyR)),q4=tf(c.x0,Math.max(0.02,lyL));
+    ctx.beginPath(); ctx.moveTo(q1[0],q1[1]);ctx.lineTo(q2[0],q2[1]);ctx.lineTo(q3[0],q3[1]);ctx.lineTo(q4[0],q4[1]);ctx.closePath();
+    ctx.fillStyle="rgba(40,120,180,0.82)"; ctx.fill();
+    ctx.strokeStyle="rgba(150,210,240,0.6)"; ctx.lineWidth=1.4; ctx.beginPath();ctx.moveTo(q4[0],q4[1]);ctx.lineTo(q3[0],q3[1]);ctx.stroke();
+  }
+  ctx.restore(); // Ende Clip Inneres
+
+  // Rumpf-Kontur
+  ctx.beginPath(); path.forEach((p,i)=>{const s=tf(p[0],p[1]); i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1]);}); ctx.closePath();
+  ctx.lineWidth=2; ctx.strokeStyle="#0a0e14"; ctx.stroke();
+
+  // Schotten
+  for(let i=1;i<b.comps.length;i++){ const x=b.comps[i].x0; const p0=tf(x,0),p1=tf(x,b.comps[i].bh);
+    ctx.beginPath();ctx.moveTo(p0[0],p0[1]);ctx.lineTo(p1[0],p1[1]); ctx.strokeStyle="rgba(130,150,175,.3)";ctx.lineWidth=1.3;ctx.stroke(); }
+
+  // --- Rumpf-Details (Anker, Ruder, Propeller, Name, Schlingerkiel) ---
+  drawHullDetail(b,tf);
+
+  // --- Spannungs-Overlay entlang Kiel ---
+  drawStress(b,tf);
+
+  // --- Aufbauten / Details ---
+  drawFeatures(b,tf);
+  // --- Deckslasten (geworfene Objekte) ---
+  drawDeckLoads(b,tf);
+
+  // --- Lecks ---
+  for(const ho of b.holes){ const s=tf(ho.lx,ho.ly); const r=Math.max(2.5,ho.r*cam.scale*0.8);
+    ctx.beginPath();ctx.arc(s[0],s[1],r,0,7);ctx.fillStyle="#080b10";ctx.fill();
+    ctx.strokeStyle="#ff5566";ctx.lineWidth=1.6;ctx.stroke();
+    // gezackte Risse um das Loch
+    ctx.strokeStyle="rgba(20,25,32,.8)";ctx.lineWidth=1.2;
+    for(let k=0;k<5;k++){const ang=k/5*6.28+ho.lx; ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(s[0]+Math.cos(ang)*r*1.8,s[1]+Math.sin(ang)*r*1.8);ctx.stroke();}
+  }
+  ctx.restore();
+}
+function nearestSeg(b,gx){ let best=null,bd=1e9; for(const s of b.segs){const d=Math.abs(s.lx-gx); if(d<bd){bd=d;best=s;}} return bd< b.dL*1.5?best:null; }
+
+function drawStress(b,tf){
+  if(!b._Mline||b.segs.length<8)return;
+  const D=b.def.D;
+  ctx.lineWidth=Math.max(3,0.9*cam.scale);
+  for(let i=0;i<b.segs.length-1;i++){
+    const r=Math.min(1.4,Math.abs(b._Mline[i])/(b._Mult||1));
+    if(r<0.15)continue;
+    const s0=tf(b.segs[i].lx,b.segs[i].keel+0.3), s1=tf(b.segs[i+1].lx,b.segs[i+1].keel+0.3);
+    const col=stressColor(r);
+    ctx.strokeStyle=col; ctx.beginPath();ctx.moveTo(s0[0],s0[1]);ctx.lineTo(s1[0],s1[1]);ctx.stroke();
+  }
+  // Riss-Symbol bei hoher Belastung
+  if(b._ratio>0.85){ const s=tf(b.segs[b._peakI].lx, D*0.5); const r=10+ (b._ratio-0.85)*40;
+    ctx.strokeStyle=`rgba(255,${Math.max(0,120-(b._ratio-0.85)*400)},60,${0.6+0.4*Math.sin(globalT*20)})`;ctx.lineWidth=2.5;
+    ctx.beginPath();let yy=tf(b.segs[b._peakI].lx,b.def.D)[1]; const xx=s[0];
+    ctx.moveTo(xx,yy); for(let k=0;k<5;k++){yy+=r*0.4; ctx.lineTo(xx+(k%2?6:-6),yy);} ctx.stroke(); }
+}
+function stressColor(r){ if(r<0.5)return `rgba(80,220,130,0.85)`; if(r<0.8)return `rgba(255,200,70,0.9)`; return `rgba(255,70,80,0.95)`; }
+
+//================================================================
+//  Rumpf-Detail (Anker, Ruder, Propeller, Name, Schlingerkiel, Sheer)
+//================================================================
+function drawHullDetail(b,tf){
+  const D=b.def.D, L=b.L, n=b.segs.length, lw=Math.max(1,cam.scale*0.1);
+  const bowLx=b.segs[n-1].lx, sternLx=b.segs[0].lx;
+  // Sheer-/Zierstreifen knapp unter dem Deck
+  ctx.strokeStyle="rgba(212,178,74,.55)"; ctx.lineWidth=Math.max(1,cam.scale*0.18);
+  ctx.beginPath(); let f=true;
+  for(const s of b.segs){ const p=tf(s.lx,D*0.9); if(f){ctx.moveTo(p[0],p[1]);f=false;}else ctx.lineTo(p[0],p[1]); }
+  ctx.stroke();
+  // vertikale Plattenstöße (Niet-/Plattennähte)
+  ctx.strokeStyle="rgba(0,0,0,.12)"; ctx.lineWidth=Math.max(.5,cam.scale*0.05);
+  for(let lx=sternLx; lx<bowLx; lx+=Math.max(4,L/28)){ const p0=tf(lx,b.def.T*0.2),p1=tf(lx,D*0.92);
+    ctx.beginPath();ctx.moveTo(p0[0],p0[1]);ctx.lineTo(p1[0],p1[1]);ctx.stroke(); }
+  // Ruder + Propeller am Heck (unter Wasser)
+  if(b.sternIntact && D>2){
+    const rp=tf(sternLx-L*0.01, D*0.18);
+    ctx.fillStyle="#1c222c";
+    const a=tf(sternLx,0.2),c=tf(sternLx-L*0.03,0.2),d=tf(sternLx-L*0.02,D*0.32),e=tf(sternLx,D*0.32);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.lineTo(e[0],e[1]);ctx.closePath();ctx.fill();
+    // Propeller
+    const pc=tf(sternLx+L*0.005,D*0.22), R=Math.max(3,cam.scale*0.9);
+    ctx.fillStyle="#caa44a";
+    for(let k=0;k<4;k++){ const ang=k/4*6.28+globalT*4; ctx.beginPath();ctx.ellipse(pc[0],pc[1],R,R*0.32,ang,0,7);ctx.fill(); }
+    ctx.fillStyle="#8a7430";ctx.beginPath();ctx.arc(pc[0],pc[1],R*0.28,0,7);ctx.fill();
+  }
+  // Anker + Klüse am Bug
+  if(b.bowIntact && D>2){
+    const ap=tf(bowLx-L*0.04, D*0.62);
+    ctx.fillStyle="#0c1018";ctx.beginPath();ctx.arc(ap[0],ap[1],Math.max(1.5,cam.scale*0.3),0,7);ctx.fill();
+    const an=tf(bowLx-L*0.04, D*0.5), aR=Math.max(2,cam.scale*0.6);
+    ctx.strokeStyle="#1a1f28";ctx.lineWidth=Math.max(1.2,cam.scale*0.14);
+    ctx.beginPath();ctx.moveTo(ap[0],ap[1]);ctx.lineTo(an[0],an[1]);
+    ctx.arc(an[0],an[1]+aR*0.4,aR,Math.PI*0.15,Math.PI*0.85);ctx.stroke();
+  }
+  // Bilge-/Schlingerkiel
+  ctx.strokeStyle="rgba(0,0,0,.3)";ctx.lineWidth=Math.max(1,cam.scale*0.12);
+  ctx.beginPath();f=true;
+  for(const s of b.segs){const p=tf(s.lx,s.keel+0.4);if(f){ctx.moveTo(p[0],p[1]);f=false;}else ctx.lineTo(p[0],p[1]);}ctx.stroke();
+  // Name am Bug
+  if(cam.scale>1.2 && b.bowIntact && D>4){
+    const np=tf(bowLx-L*0.10, D*0.78);
+    ctx.save();ctx.fillStyle="rgba(235,240,250,.7)";ctx.font=`${Math.max(7,cam.scale*1.0)}px -apple-system,sans-serif`;ctx.textAlign="center";
+    const cth=Math.cos(b.th); ctx.translate(np[0],np[1]); ctx.rotate(-b.th);
+    ctx.fillText(b.def.id.toUpperCase(), 0,0); ctx.restore();
+  }
+}
+
+//================================================================
+//  Detail-Aufbauten je Schiffstyp (in globalen lx geclippt)
+//================================================================
+function drawFeatures(b,tf){
+  const D=b.def.D,L=def.L,style=def.style,sc=cam.scale;
+  const inRange=(glx)=> (glx>=b.gxC + b.segs[0].lx-b.dL) && (glx<=b.gxC + b.segs[b.segs.length-1].lx+b.dL);
+  const g2l=(glx)=>glx-b.gxC;
+  const fine=sc>0.9;        // Feindetails nur bei genug Zoom
+  const LW=(w)=>Math.max(.7,sc*w);
+  // gefülltes Rechteck (globale x, lokale y) mit optionaler Kontur
+  function R(gx0,gx1,y0,y1,col,line){ if(!inRange((gx0+gx1)/2))return;
+    const a=tf(g2l(gx0),y0),bb=tf(g2l(gx1),y0),c=tf(g2l(gx1),y1),d=tf(g2l(gx0),y1);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(bb[0],bb[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();
+    ctx.fillStyle=col;ctx.fill(); if(line!==false){ctx.strokeStyle="#0a0e14";ctx.lineWidth=LW(0.09);ctx.stroke();} }
+  function Line(gxA,yA,gxB,yB,col,w){ const p=tf(g2l(gxA),yA),q=tf(g2l(gxB),yB);
+    ctx.strokeStyle=col;ctx.lineWidth=LW(w||0.12);ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);ctx.stroke(); }
+  // Fensterreihe mit Rahmen
+  function Win(gx0,gx1,y,h,col){ if(!fine)return; const span=gx1-gx0; const cnt=Math.max(2,Math.round(span/(L*0.013)));
+    for(let i=0;i<cnt;i++){ const gx=gx0+span*(i+0.5)/cnt; if(!inRange(gx))continue; R(gx-span/cnt*0.30,gx+span/cnt*0.30,y,y+h,col,false);} }
+  // Schornstein: sitzt auf baseY (Aufbautendeck), geneigt, schwarzer Kopf, Dampf, Pfeife
+  function Funnel(gx,w,h,baseY,col,top){ if(!inRange(gx))return; const rake=w*0.5,g=g2l(gx);
+    const a=tf(g-w/2,baseY),bb=tf(g+w/2,baseY),c=tf(g+w/2-rake,baseY+h),d=tf(g-w/2-rake,baseY+h);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(bb[0],bb[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();
+    ctx.fillStyle=col;ctx.fill();ctx.strokeStyle="#0a0e14";ctx.lineWidth=LW(0.1);ctx.stroke();
+    // Glanzkante
+    ctx.strokeStyle="rgba(255,255,255,.18)";ctx.lineWidth=LW(0.14);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(d[0],d[1]);ctx.stroke();
+    // schwarzer Kopf
+    const e=tf(g+w/2-rake,baseY+h*0.84),fp=tf(g-w/2-rake,baseY+h*0.84);
+    ctx.beginPath();ctx.moveTo(fp[0],fp[1]);ctx.lineTo(e[0],e[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();ctx.fillStyle=top||"#16181c";ctx.fill();
+    // Dampfpfeife
+    if(fine){ R(gx-w*0.08,gx+w*0.08, baseY+h, baseY+h+h*0.12, "#2a2e34"); }
+    // Rauch/Dampf
+    if(!b.sunk && b._maxFree>0.5 && Math.random()<0.55){ const wx=b.worldX+(g-rake)*Math.cos(b.th)-(baseY+h)*Math.sin(b.th), wy=b.Zc+(g-rake)*Math.sin(b.th)+(baseY+h)*Math.cos(b.th);
+      particles.push({type:'foam',x:wx,y:wy,vx:(weather.U*0.06)+(Math.random()-.5),vy:1.2+Math.random()*1.6,life:1,r:1.6+Math.random()*2.6,smoke:true}); }
+  }
+  // Lüfter-Kappe (Krümmer)
+  function Vent(gx,baseY,h){ if(!inRange(gx)||!fine)return; const w=L*0.010; R(gx-w,gx+w,baseY,baseY+h,"#6a7480");
+    const p=tf(g2l(gx-w),baseY+h),p2=tf(g2l(gx+w*0.8),baseY+h+h*0.5);
+    ctx.fillStyle="#454d57";ctx.beginPath();ctx.arc((p[0]+p2[0])/2,(p[1]+p2[1])/2,Math.max(1.5,sc*0.4),0,7);ctx.fill(); }
+  // Mast mit Rah, Flagge, Toplicht
+  function Mast(gx,baseY,h,flagCol){ if(!inRange(gx))return; const g=g2l(gx); const p=tf(g,baseY),p2=tf(g,baseY+h);
+    ctx.strokeStyle="#4a3c28";ctx.lineWidth=LW(0.22);ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke();
+    const cl=tf(g-L*0.022,baseY+h*0.72),cr=tf(g+L*0.022,baseY+h*0.72);
+    ctx.lineWidth=LW(0.13);ctx.beginPath();ctx.moveTo(cl[0],cl[1]);ctx.lineTo(cr[0],cr[1]);ctx.stroke();
+    if(fine){ // Toplicht
+      ctx.fillStyle="rgba(255,230,160,.9)";ctx.beginPath();ctx.arc(p2[0],p2[1],Math.max(1,sc*0.2),0,7);ctx.fill(); }
+    // flatternde Flagge
+    const fl=Math.max(4,sc*1.1), wv=Math.sin(globalT*6+gx)*fl*0.18;
+    ctx.fillStyle=flagCol||"#c0392b";ctx.beginPath();ctx.moveTo(p2[0],p2[1]);
+    ctx.lineTo(p2[0]+fl,p2[1]+fl*0.25+wv);ctx.lineTo(p2[0]+fl*0.5,p2[1]+fl*0.4);
+    ctx.lineTo(p2[0]+fl,p2[1]+fl*0.6-wv);ctx.lineTo(p2[0],p2[1]+fl*0.7);ctx.closePath();ctx.fill();
+    return p2;
+  }
+  // Rettungsboot (Schale) in Davits
+  function Davit(gx,baseY){ if(!inRange(gx)||!fine)return; const g=g2l(gx),w=L*0.011;
+    // Boot
+    const a=tf(g-w,baseY+D*0.03),bb=tf(g+w,baseY+D*0.03),c=tf(g+w*0.7,baseY+D*0.085),d=tf(g-w*0.7,baseY+D*0.085);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(bb[0],bb[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();ctx.fillStyle="#d8c89a";ctx.fill();ctx.strokeStyle="#7a6a44";ctx.lineWidth=LW(0.06);ctx.stroke();
+    // Davitarme
+    Line(gx-w,baseY+D*0.10,gx-w,baseY+D*0.01,"#3a424c",0.06); Line(gx+w,baseY+D*0.10,gx+w,baseY+D*0.01,"#3a424c",0.06);
+  }
+  // Kran (Drehkran mit Ausleger + Haken)
+  function Crane(gx,baseY,h){ if(!inRange(gx))return; R(gx-L*0.009,gx+L*0.009,baseY,baseY+h*0.4,"#7a6a3a");
+    Line(gx,baseY+h*0.4,gx+L*0.06,baseY+h,"#8a94a0",0.2); Line(gx,baseY+h*0.4,gx-L*0.02,baseY+h*0.62,"#8a94a0",0.14);
+    Line(gx+L*0.06,baseY+h,gx+L*0.06,baseY+h*0.45,"#6a727c",0.07); }
+  // Derrick-Pfosten
+  function Kingpost(gx,baseY,h){ if(!inRange(gx))return; R(gx-L*0.006,gx+L*0.006,baseY,baseY+h,"#6a5a3a");
+    Line(gx,baseY+h*0.9,gx+L*0.05,baseY+h*0.3,"#8a94a0",0.1); Line(gx,baseY+h*0.9,gx-L*0.05,baseY+h*0.3,"#8a94a0",0.1); }
+  // Geschützturm mit Rohren
+  function Gun(gx,baseY,sz,n,len,dir){ if(!inRange(gx))return; R(gx-sz,gx+sz,baseY,baseY+sz*1.1,"#6a7480"); R(gx-sz*0.7,gx+sz*0.7,baseY+sz*1.1,baseY+sz*1.7,"#5a6470");
+    for(let t=0;t<n;t++){ const off=(t-(n-1)/2)*sz*0.5; const p=tf(g2l(gx),baseY+sz*1.3+off),p2=tf(g2l(gx)+dir*len,baseY+sz*1.3+off);
+      ctx.strokeStyle="#23282f";ctx.lineWidth=LW(0.16);ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke(); } }
+  // Tankdom (Kuppel)
+  function Dome(gx,baseY,r){ if(!inRange(gx))return; const p=tf(g2l(gx),baseY+r); ctx.fillStyle="#8a9098";ctx.beginPath();ctx.arc(p[0],p[1],Math.max(2,r*sc),Math.PI,0);ctx.fill();ctx.strokeStyle="#0a0e14";ctx.lineWidth=LW(0.07);ctx.stroke(); }
+  // Reling
+  function Rail(yOff){ if(!fine)return; ctx.strokeStyle="rgba(205,214,228,.5)";ctx.lineWidth=LW(0.05);
+    let ff=true; for(const s of b.segs){const t=2*s.lx/b.L; const dy=D+0.05*D*Math.pow(Math.abs(t),2)+yOff; const p=tf(s.lx,dy); if(ff){ctx.beginPath();ctx.moveTo(p[0],p[1]);ff=false;}else ctx.lineTo(p[0],p[1]);} ctx.stroke();
+    // Stützen
+    if(sc>1.6){ ctx.lineWidth=LW(0.03); for(const s of b.segs){ if(Math.round((s.lx+b.L/2)/ (b.L/40))%1===0){} const p=tf(s.lx,D+yOff),p2=tf(s.lx,D+yOff-0.7); if(Math.abs(s.lx%(b.L/45))<b.dL){ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke();} } } }
+
+  Rail(0.8);
+  if(style==="liner"){
+    // --- gestaffelte weiße Decks (Promenade, A-, Bootsdeck) ---
+    const y1=D, y2=D+D*0.20, y3=D+D*0.36, y4=D+D*0.50;        // y4 = Bootsdeck-Oberkante
+    R(-L*0.42,L*0.41,y1,y2,"#ece8de"); Win(-L*0.42,L*0.41,y1+D*0.05,D*0.11,"#27313c");
+    R(-L*0.37,L*0.37,y2,y3,"#f2eee6"); Win(-L*0.37,L*0.37,y2+D*0.04,D*0.09,"#27313c");
+    R(-L*0.33,L*0.33,y3,y4,"#f6f2ea"); Win(-L*0.33,L*0.33,y3+D*0.035,D*0.08,"#27313c");
+    // Promenaden-Bogenfenster (offene Galerie)
+    if(fine) for(let i=0;i<26;i++){ const gx=-L*0.40+L*0.80*(i+0.5)/26; R(gx-L*0.008,gx+L*0.008,y1+D*0.02,y2-D*0.02,"#1b2630",false); }
+    // Brücke + Brückennock
+    R(L*0.21,L*0.31,y4,y4+D*0.14,"#e8e4da"); Win(L*0.215,L*0.305,y4+D*0.04,D*0.07,"#15212c");
+    R(L*0.19,L*0.33,y4,y4+D*0.03,"#dad6cc");
+    Rail(D*0.20+0.4); Rail(D*0.36+0.4); Rail(D*0.50+0.4);
+    // Rettungsboote (Bootsdeck)
+    for(let i=0;i<18;i++){ const gx=-L*0.32+L*0.62*(i+0.5)/18; Davit(gx,y4); }
+    // Lüfter
+    for(let i=0;i<7;i++) Vent(-L*0.16+i*L*0.05, y4, D*0.14);
+    // 4 Schornsteine auf dem Bootsdeck (jetzt korrekt oben!)
+    const fx=[-L*0.165,-L*0.055,L*0.055,L*0.165];
+    for(const gx of fx) Funnel(gx, L*0.050, D*0.66, y4, "#d8b24c","#16181c");
+    // Masten + Takelage (zu den Schornsteinen)
+    const m1=Mast(L*0.40,D,D*1.55,"#c0392b"), m2=Mast(-L*0.43,D,D*1.45,"#1f6fb0");
+    if(m1){ ctx.strokeStyle="rgba(40,46,56,.45)";ctx.lineWidth=LW(0.04);
+      const f1=tf(g2l(fx[2]),y4+D*0.66); ctx.beginPath();ctx.moveTo(m1[0],m1[1]);ctx.lineTo(f1[0],f1[1]);ctx.stroke(); }
+    if(m2){ ctx.strokeStyle="rgba(40,46,56,.45)";ctx.lineWidth=LW(0.04);
+      const f2=tf(g2l(fx[0]),y4+D*0.66); ctx.beginPath();ctx.moveTo(m2[0],m2[1]);ctx.lineTo(f2[0],f2[1]);ctx.stroke(); }
+    // Back (Forecastle) + Ladegeschirr vorn
+    R(L*0.34,L*0.46,D,D+D*0.10,"#3c4654"); Kingpost(L*0.40,D,D*0.5);
+  } else if(style==="container"){
+    // Containerstapel über die ganze Länge, bunt, mit Eckbeschlägen
+    const cols=["#b5603a","#3a7ab5","#3ab57a","#b5a83a","#8a3ab5","#b53a5a","#c97a2a","#2a8a8a","#bdbdbd"];
+    const bays=16;
+    for(let r=0;r<bays;r++){ const gx=-L*0.46+L*0.92*r/bays; const w=L*0.92/bays-L*0.004; const stacks=4+((r*5)%4);
+      for(let h=0;h<stacks;h++){ const cc=cols[(r*3+h)%cols.length]; R(gx,gx+w,D+h*D*0.115,D+(h+1)*D*0.115-0.35,cc);
+        if(sc>1.4){ ctx.fillStyle="rgba(0,0,0,.25)"; const e=tf(g2l(gx),D+h*D*0.115),e2=tf(g2l(gx+w),D+h*D*0.115); ctx.fillRect(Math.min(e[0],e2[0]),e[1]-1,2,2);} } }
+    // Brückenhaus + Maschinenhaus achtern
+    R(L*0.29,L*0.47,D,D+D*0.28,"#39414e");
+    R(L*0.31,L*0.45,D+D*0.28,D+D*0.62,"#2b323d"); Win(L*0.315,L*0.445,D+D*0.33,D*0.06,"#9ad0e8"); Win(L*0.315,L*0.445,D+D*0.45,D*0.06,"#9ad0e8");
+    R(L*0.34,L*0.42,D+D*0.62,D+D*0.82,"#222831"); Win(L*0.345,L*0.415,D+D*0.66,D*0.05,"#9ad0e8");
+    Funnel(L*0.380,L*0.030,D*0.34,D+D*0.82,"#222831","#b5603a");
+    Mast(L*0.40,D+D*0.82,D*0.35,"#c0392b");
+    Crane(L*0.0,D,D*0.55);
+  } else if(style==="warship"){
+    R(-L*0.24,L*0.18,D,D+D*0.26,"#5a6470");
+    R(-L*0.12,L*0.05,D+D*0.26,D+D*0.55,"#4a525c"); Win(-L*0.115,L*0.045,D+D*0.34,D*0.05,"#0e1c26");
+    R(-L*0.06,L*0.0,D+D*0.55,D+D*0.95,"#3a424c");              // Brückenturm
+    R(-L*0.045,-L*0.01,D+D*0.95,D+D*1.25,"#333b44");
+    const mp=Mast(-L*0.025,D+D*1.25,D*0.5,"#c0392b");          // Mast oben
+    if(mp){ const b1=tf(g2l(-L*0.06),D+D*0.7),b2=tf(g2l(L*0.005),D+D*0.7); ctx.strokeStyle="rgba(60,66,76,.7)";ctx.lineWidth=LW(0.07);
+      ctx.beginPath();ctx.moveTo(mp[0],mp[1]);ctx.lineTo(b1[0],b1[1]);ctx.moveTo(mp[0],mp[1]);ctx.lineTo(b2[0],b2[1]);ctx.stroke(); }
+    // Radar
+    if(fine){ const rp=tf(g2l(-L*0.025),D+D*1.30); ctx.strokeStyle="#9aa4b0";ctx.lineWidth=LW(0.1);ctx.beginPath();ctx.ellipse(rp[0],rp[1],Math.max(3,sc*1.1),Math.max(1.2,sc*0.4),Math.sin(globalT*2)*0.5,0,7);ctx.stroke(); }
+    Funnel(L*0.07,L*0.040,D*0.48,D+D*0.26,"#39414e","#23282f");
+    // Haupt-Geschütztürme (Drilling)
+    Gun(-L*0.38,D,L*0.045,3,L*0.075,-1); Gun(-L*0.28,D,L*0.045,3,L*0.075,-1);
+    Gun(L*0.26,D,L*0.045,3,L*0.075,1); Gun(L*0.36,D,L*0.045,3,L*0.075,1);
+    // Sekundär/Flak
+    if(fine) for(const gx of [-L*0.16,-L*0.09,L*0.10,L*0.17]) Gun(gx,D+D*0.20,L*0.016,2,L*0.03,gx>0?1:-1);
+  } else if(style==="cargo"){
+    R(L*0.23,L*0.47,D,D+D*0.28,"#3a424c");
+    R(L*0.26,L*0.44,D+D*0.28,D+D*0.58,"#2b323d"); Win(L*0.265,L*0.435,D+D*0.34,D*0.06,"#9ad0e8");
+    R(L*0.30,L*0.41,D+D*0.58,D+D*0.78,"#222831"); Win(L*0.305,L*0.405,D+D*0.62,D*0.05,"#9ad0e8");
+    Funnel(L*0.355,L*0.038,D*0.34,D+D*0.78,"#2b323d","#c0392b");
+    // Laderäume + Kräne + Derricks
+    for(let i=0;i<4;i++){ const gx=-L*0.42+i*L*0.165; R(gx,gx+L*0.12,D,D+D*0.09,"#5a4a2a"); Crane(gx+L*0.135,D,D*0.85); }
+    Kingpost(-L*0.46,D,D*0.7); Mast(L*0.33,D+D*0.78,D*0.4,"#c0392b");
+  } else if(style==="tanker"){
+    // Tankdeck: durchgehende Rohrleitung, Tankdome, Ventile, Manifold
+    let f=true;ctx.strokeStyle="#6a7480";ctx.lineWidth=LW(0.14);ctx.beginPath();
+    for(const s of b.segs){ if(s.lx<L*0.27){const p=tf(s.lx,D+0.9);if(f){ctx.moveTo(p[0],p[1]);f=false;}else ctx.lineTo(p[0],p[1]);} }ctx.stroke();
+    for(let i=0;i<10;i++){ const gx=-L*0.45+i*L*0.072; Dome(gx,D,D*0.07); R(gx-L*0.004,gx+L*0.004,D,D+D*0.12,"#5a6470"); }
+    R(L*0.02,L*0.06,D,D+D*0.42,"#c0392b");   // Mittelmanifold (Kreuz)
+    R(-L*0.02,L*0.10,D+D*0.18,D+D*0.22,"#c0392b");
+    // Deckshaus achtern (mehrstöckig)
+    R(L*0.29,L*0.47,D,D+D*0.32,"#e8e4da");
+    R(L*0.32,L*0.44,D+D*0.32,D+D*0.62,"#dad6cc"); Win(L*0.325,L*0.435,D+D*0.38,D*0.06,"#2a3340");
+    R(L*0.35,L*0.42,D+D*0.62,D+D*0.86,"#ccc8be"); Win(L*0.355,L*0.415,D+D*0.66,D*0.05,"#2a3340");
+    Funnel(L*0.385,L*0.036,D*0.34,D+D*0.86,"#222831","#c0392b");
+    Mast(L*0.0,D,D*0.95,"#1f6fb0");
+  } else if(style==="trawler"){
+    R(L*0.0,L*0.30,D,D+D*0.38,"#c0392b"); Win(L*0.02,L*0.28,D+D*0.12,D*0.10,"#2a3340");
+    R(L*0.04,L*0.24,D+D*0.38,D+D*0.74,"#e8e4da"); Win(L*0.05,L*0.235,D+D*0.46,D*0.12,"#2a3340");
+    R(L*0.10,L*0.18,D+D*0.74,D+D*1.0,"#d0ccc0"); Win(L*0.105,L*0.175,D+D*0.80,D*0.09,"#2a3340");
+    Funnel(L*0.15,L*0.046,D*0.40,D+D*0.74,"#2b323d","#f0c040");
+    // Heck-Galgen + Netztrommel
+    R(-L*0.46,-L*0.12,D,D+D*0.12,"#4a525c");
+    Line(-L*0.42,D+D*0.12,-L*0.20,D+D*0.95,"#7a8490",0.18); Line(-L*0.20,D+D*0.95,-L*0.20,D+D*0.12,"#7a8490",0.14);
+    if(fine){ const tp=tf(g2l(-L*0.30),D+D*0.10); ctx.fillStyle="#3a424c";ctx.beginPath();ctx.arc(tp[0],tp[1],Math.max(2,sc*0.9),0,7);ctx.fill(); }
+    Mast(L*0.16,D+D*0.74,D*0.5,"#c0392b");
+  } else if(style==="boat"){
+    R(-L*0.32,L*0.32,D,D+D*0.08,"#8a6a3a");
+    for(let i=0;i<4;i++){ const gx=-L*0.24+i*L*0.16; R(gx-L*0.02,gx+L*0.02,D,D+D*0.11,"#6a4a2a"); }  // Duchten
+  }
+}
+
+//================================================================
+//  Wasseroberfläche & Partikel
+//================================================================
+function drawSeaSurface(storm){
+  ctx.beginPath(); let first=true;
+  const step=4;
+  for(let sx=0;sx<=W;sx+=step){ const wx=cam.cx+(sx-W/2)/cam.scale; const sy=W2S(wx,seaY(wx,globalT))[1]; if(first){ctx.moveTo(sx,sy);first=false;}else ctx.lineTo(sx,sy); }
+  ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();
+  ctx.fillStyle=`rgba(25,95,140,${0.34+0.16*storm})`; ctx.fill();
+  // Schaumkamm-Linie
+  ctx.beginPath();first=true;
+  for(let sx=0;sx<=W;sx+=step){ const wx=cam.cx+(sx-W/2)/cam.scale; const sy=W2S(wx,seaY(wx,globalT))[1]; if(first){ctx.moveTo(sx,sy);first=false;}else ctx.lineTo(sx,sy); }
+  ctx.strokeStyle=`rgba(225,242,255,${0.3+0.4*storm})`; ctx.lineWidth=1.6; ctx.stroke();
+  // Schaumkronen bei Sturm
+  if(storm>0.4){ for(let sx=0;sx<=W;sx+=8){ const wx=cam.cx+(sx-W/2)/cam.scale; const sl=seaSlope(wx,globalT); if(Math.abs(sl)>0.6&&Math.random()<0.04){ const sy=W2S(wx,seaY(wx,globalT))[1]; ctx.fillStyle="rgba(240,250,255,.7)";ctx.beginPath();ctx.arc(sx,sy,2+Math.random()*3,0,7);ctx.fill(); } } }
+}
+function drawParticles(layer){
+  for(const p of particles){
+    const under=p.y<seaY(p.x,globalT);
+    if(layer==='back' && !(p.type==='bubble'||p.type==='debris'&&under))continue;
+    if(layer==='front' && (p.type==='bubble'||(p.type==='debris'&&under)))continue;
+    const s=W2S(p.x,p.y); const r=Math.max(0.6,p.r*cam.scale*0.35);
+    if(p.type==='bubble'){ ctx.strokeStyle=`rgba(200,235,255,${0.5*p.life})`;ctx.lineWidth=1;ctx.beginPath();ctx.arc(s[0],s[1],r,0,7);ctx.stroke(); }
+    else if(p.type==='debris'){ ctx.save();ctx.translate(s[0],s[1]);ctx.rotate(p.rot||0);ctx.fillStyle=p.col||'#444';ctx.fillRect(-r,-r*0.5,r*2,r);ctx.restore(); }
+    else if(p.smoke){ ctx.fillStyle=`rgba(60,66,74,${0.3*p.life})`;ctx.beginPath();ctx.arc(s[0],s[1],r*1.6,0,7);ctx.fill(); }
+    else { ctx.fillStyle=`rgba(240,250,255,${0.8*p.life})`;ctx.beginPath();ctx.arc(s[0],s[1],r,0,7);ctx.fill(); }
+  }
+}
+function drawRain(storm){ ctx.strokeStyle=`rgba(170,200,230,${0.12+0.22*storm})`;ctx.lineWidth=1; const n=Math.floor(120*storm); for(let i=0;i<n;i++){ const x=((i*97+globalT*1100)%W); const y=((i*53+globalT*1500)%H); ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-5,y+14);ctx.stroke(); } }
+
+//================================================================
+//  HUD
+//================================================================
+function mainBody(){ // größter intakter/relevanter Body
+  let best=bodies[0]; for(const b of bodies) if(b._m>(best?best._m:0)) best=b; return best||bodies[0]; }
+function updateHUD(){
+  const b=mainBody(); if(!b)return;
+  let dispT=0,floodT=0,floodPct=0,cap=0,maxStress=0,minReserve=1;
+  for(const x of bodies){ dispT+=x._m; floodT+=x._mFlood; for(const c of x.comps){floodPct+=c.Vw;cap+=c.floor*x.def.D;}
+    const r=Math.min(1.6, x._ratio!==undefined? x._ratio : Math.abs(x._peakM)/(x._Mult||1)); maxStress=Math.max(maxStress,r);
+    const rv=Math.max(0,1-(x._Vsubm)/totalHullVol(x)); minReserve=Math.min(minReserve,rv); }
+  floodPct=cap>0?floodPct/cap:0;
+  const draft=-b.Zc, trim=b.th*180/Math.PI;
+  set('sDraft',draft.toFixed(2)+' m');
+  set('sTrim',(Math.abs(trim)<0.05?'0.0':Math.abs(trim).toFixed(1))+'° '+(trim>0.05?'Heck':trim<-0.05?'Bug':''));
+  set('sDisp',fmt(dispT/1000)+' t');
+  set('sFlood',fmt(floodT/1000)+' t');
+  set('sGM',b._GM.toFixed(2)+' m');
+  set('sStress',Math.round(maxStress*100)+' %');
+  bar('barReserve',minReserve*100, minReserve>0.4?'var(--good)':minReserve>0.15?'var(--warn)':'var(--bad)');
+  bar('barStress',Math.min(100,maxStress*100), maxStress<0.5?'var(--good)':maxStress<0.85?'var(--warn)':'var(--bad)');
+  bar('barFlood',floodPct*100,'var(--bad)');
+
+  let st='AFLOAT',cls='var(--good)';
+  const anySunk=bodies.some(x=>x.sunk), anyBroken=bodies.length>1;
+  if(bodies.every(x=>x.rest||x.sunk)&&anySunk){st='AM MEERESGRUND ⚓';cls='var(--bad)';}
+  else if(anyBroken){st='AUSEINANDERGEBROCHEN';cls='var(--bad)';}
+  else if(maxStress>0.9){st='STRUKTURVERSAGEN!';cls='var(--bad)';}
+  else if(b.sunk||(minReserve<0.13&&floodPct>0.04)){st='SINKT…';cls='var(--bad)';}
+  else if(b._GM<0){st='KENTERT (GM<0)';cls='var(--bad)';}
+  else if(minReserve<0.12){st='ÜBERLADEN ⚠';cls='var(--warn)';}
+  else if(floodPct>0.02){st='FLUTUNG';cls='var(--warn)';}
+  else if(maxStress>0.6){st='HOHE BELASTUNG';cls='var(--warn)';}
+  else if(Math.abs(trim)>3){st='SCHWERE LAGE';cls='var(--warn)';}
+  const sd=document.getElementById('status');sd.textContent=st;sd.style.color=cls;sd.style.borderColor=cls;
+
+  document.getElementById('overlay').innerHTML=
+    `<span class="k">Verdrängung</span> <b>${fmt(dispT/1000)} t</b><br>`+
+    `<span class="k">Tiefgang</span> <b>${draft.toFixed(2)} m</b> &nbsp; <span class="k">Trimm</span> <b>${trim.toFixed(1)}°</b><br>`+
+    `<span class="k">Biegung</span> <b>${Math.round(maxStress*100)}%</b> &nbsp; <span class="k">GM</span> <b>${b._GM.toFixed(2)} m</b><br>`+
+    `<span class="k">Teile</span> <b>${bodies.length}</b> &nbsp; <span class="k">Lecks</span> <b>${bodies.reduce((a,x)=>a+x.holes.length,0)}</b> &nbsp; <span class="k">See</span> <b>Bft ${weather.bft} · ${weather.Hs.toFixed(1)} m</b>`;
+}
+function totalHullVol(b){ let v=0; for(const s of b.segs) v+=s.beam*b.def.D*b.dL; return Math.max(1,v*b.cbVol); }
+function set(id,v){document.getElementById(id).textContent=v;}
+function bar(id,p,c){const e=document.getElementById(id);e.style.width=Math.max(0,Math.min(100,p))+'%';e.style.background=c;}
+function fmt(n){ if(n>=1e6)return(n/1e6).toFixed(2)+'M'; if(n>=1000)return(n/1000).toFixed(1)+'k'; return Math.round(n).toString();}
+function mix(a,b,t){const ca=hx(a),cb=hx(b);return`rgb(${Math.round(ca[0]+(cb[0]-ca[0])*t)},${Math.round(ca[1]+(cb[1]-ca[1])*t)},${Math.round(ca[2]+(cb[2]-ca[2])*t)})`;}
+function hx(h){h=h.replace('#','');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+
+function addLog(msg,cls){ logBuf.unshift({msg,cls}); if(logBuf.length>30)logBuf.pop(); const el=document.getElementById('log'); el.innerHTML=logBuf.map(l=>`<div class="${l.cls||'ev'}">${l.msg}</div>`).join(''); }
+let toastT=0;
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.style.opacity=1; toastT=globalT; setTimeout(()=>{el.style.opacity=0;},1800); }
+
+//================================================================
+//  Interaktion
+//================================================================
+function damageAt(sx,sy){
+  // welt
+  const wx=cam.cx+(sx-W/2)/cam.scale, wy=cam.cy-(sy-H/2)/cam.scale;
+  // nächstgelegenen Body finden
+  for(const b of bodies){
+    const cth=Math.cos(b.th),sth=Math.sin(b.th);
+    const dx=wx-b.worldX, dy=wy-b.Zc;
+    const lx=dx*cth+dy*sth, ly=-dx*sth+dy*cth;
+    if(lx< b.segs[0].lx-2 || lx> b.segs[b.segs.length-1].lx+2) continue;
+    if(ly<-1 || ly>b.def.D+1) continue;
+    let comp=0,bd=1e9; for(let i=0;i<b.comps.length;i++){ if(lx>=b.comps[i].x0&&lx<b.comps[i].x1){comp=i;break;} }
+    const r=ui.toolR;
+    b.holes.push({lx,ly:Math.max(0.05,Math.min(b.def.D,ly)),comp,r,area:Math.PI*r*r});
+    addLog(`💢 Schaden (Ø${(r*2).toFixed(1)} m) in Abteilung ${comp+1}`,'ev');
+    // sofortige Gischt
+    const wxh=b.worldX+lx*cth-ly*sth, sea=seaY(wxh,globalT);
+    for(let k=0;k<8;k++) spawnSplash(wxh,sea, 4);
+    return;
+  }
+  // kein Rumpf getroffen -> Objekt von oben werfen (wenn über Wasser geklickt)
+  if(wy > seaY(wx,globalT)-1) throwObjectAt(wx, wy);
+}
+
+//================================================================
+//  Geworfene Fallobjekte (von oben aufs Schiff)
+//================================================================
+function throwObjectAt(wx,wy){
+  const ref=mainBody(); if(!ref)return;
+  const mass=Math.max(600, 0.035*ref.m0);          // ~3,5% der Schiffsmasse
+  const size=Math.max(1.6, Math.pow(mass/1000,0.34)*1.4);
+  fallObjects.push({x:wx,y:Math.max(wy, seaY(wx,globalT)+1), vx:0, vy:0, mass, size,
+                    type:Math.random()<0.5?'crate':'boulder', spin:0, vr:(Math.random()-0.5)*3});
+  addLog('🪂 Objekt geworfen ('+fmt(mass/1000)+' t)');
+}
+function updateFallObjects(dt){
+  for(let i=fallObjects.length-1;i>=0;i--){ const o=fallObjects[i];
+    o.vy-=G*dt; o.y+=o.vy*dt; o.x+=o.vx*dt; o.spin+=o.vr*dt;
+    let hit=null;
+    for(const b of bodies){ if(b.sunk)continue;
+      const cth=Math.cos(b.th),sth=Math.sin(b.th);
+      const dx=o.x-b.worldX, dy=o.y-b.Zc;
+      const lx=dx*cth+dy*sth;
+      if(lx<b.segs[0].lx || lx>b.segs[b.segs.length-1].lx) continue;
+      const deckY=b.Zc+lx*sth+b.def.D*cth;
+      if(o.y<=deckY+o.size*0.4){ hit={b,lx}; break; }
+    }
+    if(hit){ impactObject(o,hit.b,hit.lx); fallObjects.splice(i,1); continue; }
+    if(o.y<=seaY(o.x,globalT)){ for(let k=0;k<14;k++)spawnSplash(o.x,seaY(o.x,globalT),8); fallObjects.splice(i,1); continue; }
+    if(o.y<SEAFLOOR-2){ fallObjects.splice(i,1); }
+  }
+}
+function impactObject(o,b,lx){
+  let comp=0; for(let k=0;k<b.comps.length;k++){ if(lx>=b.comps[k].x0&&lx<b.comps[k].x1){comp=k;break;} }
+  b.deckLoads.push({lx,mass:o.mass,size:o.size,type:o.type});
+  const v=Math.abs(o.vy);
+  // Aufprall-Impuls (begrenzt)
+  b.zV -= Math.min(1.2, (o.mass*v)/((b._m||o.mass)*4));
+  b.thV += (lx>0?-1:1)*Math.min(0.04, (o.mass*v)/((b._m||1)*b.L*2));
+  // harter Aufprall kann das Deck durchschlagen (~50%)
+  if(v>10 && Math.random()<0.5){ b.holes.push({lx,ly:b.def.D*0.82,comp,r:o.size*0.22,area:Math.PI*Math.pow(o.size*0.22,2)}); addLog('💥 Deck durchschlagen — Leck!','crit'); }
+  else addLog('📦 Objekt auf Deck (+'+fmt(o.mass/1000)+' t)');
+  const wy=b.Zc+lx*Math.sin(b.th)+b.def.D*Math.cos(b.th);
+  for(let k=0;k<10;k++)spawnDebris(o.x,wy);
+}
+function drawFallObjects(){
+  for(const o of fallObjects){ const s=W2S(o.x,o.y); const r=Math.max(3,o.size*cam.scale*0.5);
+    ctx.save();ctx.translate(s[0],s[1]);ctx.rotate(o.spin);
+    if(o.type==='crate'){ ctx.fillStyle='#9c6b3a';ctx.fillRect(-r,-r,r*2,r*2);ctx.strokeStyle='#4f3518';ctx.lineWidth=Math.max(1,r*0.12);ctx.strokeRect(-r,-r,r*2,r*2);
+      ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(r,-r);ctx.lineTo(-r,r);ctx.stroke(); }
+    else { ctx.fillStyle='#6a6e74';ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.strokeStyle='#3a3e44';ctx.lineWidth=Math.max(1,r*0.12);ctx.stroke();
+      ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.arc(r*0.3,r*0.3,r*0.4,0,7);ctx.fill(); }
+    ctx.restore();
+  }
+}
+function drawDeckLoads(b,tf){
+  for(const dlo of b.deckLoads){ const p=tf(dlo.lx,b.def.D); const r=Math.max(2,dlo.size*cam.scale*0.45);
+    ctx.save();ctx.translate(p[0],p[1]-r);ctx.rotate(-b.th);
+    if(dlo.type==='boulder'){ ctx.fillStyle='#6a6e74';ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.strokeStyle='#3a3e44';ctx.lineWidth=Math.max(.8,r*0.12);ctx.stroke(); }
+    else { ctx.fillStyle='#9c6b3a';ctx.fillRect(-r,-r,r*2,r*2);ctx.strokeStyle='#4f3518';ctx.lineWidth=Math.max(.8,r*0.12);ctx.strokeRect(-r,-r,r*2,r*2); }
+    ctx.restore();
+  }
+}
+
+//================================================================
+//  Setup
+//================================================================
+function selectShip(idx){
+  def=SHIPS[idx];
+  SEAFLOOR = -Math.max(60, def.D*6, def.L*0.45);
+  const b=makeBodyFromDef(def); attachHelpers(b); b._Mult=hullStrength(b);
+  bodies=[b]; particles=[]; fallObjects=[]; cam=null; globalT=0; logBuf=[]; evState={flooded:new Set()};
+  document.getElementById('log').innerHTML='';
+  applyLoad(); applyWeather();
+  document.getElementById('shipInfo').innerHTML=
+    `${def.L} m × ${def.B} m · Tiefgang ${def.T} m<br>${def.comp} Abteilungen · Schotthöhe ${Math.round(def.bhFrac*100)}%`+
+    (def.bhFrac<0.7?' <span style="color:var(--warn)">⚠</span>':'')+
+    `<br>Rumpffestigkeit: <b style="color:${def.hullK>0.9?'var(--good)':def.hullK<0.6?'var(--bad)':'var(--warn)'}">${def.hullK<0.6?'schwach':def.hullK>0.9?'stark':'mittel'}</b>`;
+  addLog('🚢 '+def.name+' ausgewählt');
+}
+function applyLoad(){ const v=+document.getElementById('load').value; const over=(v-100)/100; for(const b of bodies) b.cargo=over; document.getElementById('loadLbl').textContent=v+' %'; }
+function applyWeather(){ const v=+document.getElementById('wind').value; weather=makeWeather(v);
+  document.getElementById('bfLbl').textContent='Bft '+v;
+  document.getElementById('waveH').textContent=weather.Hs.toFixed(1)+' m';
+  document.getElementById('windV').textContent=Math.round(weather.U*3.6)+' km/h'; }
+
+let paused=false,last=0;
+function loop(ts){ if(!last)last=ts; let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,0.05);
+  if(!paused) step(dt*ui.speed); draw(dt); requestAnimationFrame(loop); }
+
+function initUI(){
+  ui={toolR:0.12,speed:1.5};
+  const sel=document.getElementById('shipSel');
+  SHIPS.forEach((s,i)=>{const o=document.createElement('option');o.value=i;o.textContent=s.name;sel.appendChild(o);});
+  sel.value=4; sel.onchange=()=>selectShip(+sel.value);
+  document.querySelectorAll('#toolRow button').forEach(bn=>{ bn.onclick=()=>{document.querySelectorAll('#toolRow button').forEach(x=>x.classList.remove('act'));bn.classList.add('act');ui.toolR=parseFloat(bn.dataset.r);}; });
+  document.getElementById('load').oninput=applyLoad;
+  document.getElementById('wind').oninput=applyWeather;
+  const sp=document.getElementById('speed'); sp.oninput=()=>{ui.speed=+sp.value;document.getElementById('tsLbl').textContent=(+sp.value).toFixed(2)+'×';};
+  document.getElementById('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'▶ Weiter':'⏸ Pause';e.target.classList.toggle('act',paused);};
+  document.getElementById('reset').onclick=()=>{selectShip(+sel.value);paused=false;const pb=document.getElementById('pause');pb.textContent='⏸ Pause';pb.classList.remove('act');};
+  document.getElementById('storm').onclick=()=>{ document.getElementById('wind').value=11; applyWeather(); addLog('🌊 Orkan zieht auf! (Bft 11)','crit'); };
+  document.getElementById('ballast').onclick=()=>{ for(const b of bodies)for(const c of b.comps){c.Vw*=0.5;c.level=c.Vw/c.floor;} addLog('⚖ Abteilungen teilweise gelenzt'); };
+  cv.addEventListener('mousedown',ev=>{const r=cv.getBoundingClientRect();damageAt(ev.clientX-r.left,ev.clientY-r.top);});
+  window.addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault();document.getElementById('pause').click();} if(e.key==='r'||e.key==='R')document.getElementById('reset').click(); });
+  selectShip(4);
+}
+window.addEventListener('resize',resize);
+window.addEventListener('load',()=>{ cv=document.getElementById('cv');ctx=cv.getContext('2d'); resize(); initUI(); requestAnimationFrame(loop); });
+</script>
+</body>
+</html>

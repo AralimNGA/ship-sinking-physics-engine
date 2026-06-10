@@ -1,0 +1,34 @@
+# OS files
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node / JS deps
+node_modules/
+**/node_modules/
+
+# Python
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+
+# Build output
+dist/
+build/
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.local
+**/.env
+
+# Swift / Xcode
+*.swiftpm
+DerivedData/
