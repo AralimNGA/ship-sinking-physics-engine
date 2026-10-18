@@ -37,6 +37,8 @@ No installation, build, or server required — everything runs client-side in th
 2. Open **`schiff_simulator_v5_rigid.html`** in a modern browser (double-click is enough) — this is the more advanced **rigid-body naval-architecture** version.
 3. Alternatively, open **`schiff_simulator.html`** — the **soft-body** variant with mass-spring physics and the sandbox tools.
 
+`index.html` is a small start page that links to both versions (useful when the repository is served with GitHub Pages).
+
 That's it: no `npm install`, no build step, no server.
 
 > Note: The user interface and in-app labels are in German.
