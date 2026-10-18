@@ -43,6 +43,10 @@ That's it: no `npm install`, no build step, no server.
 
 ## Screenshots
 
+![Titanic-class hull hit by four torpedoes below the waterline: bow flooding, trim, final plunge](screenshots/sinking.gif)
+
+<sub>Rigid-body version, four torpedo hits near the bow, time-lapse. Recorded headless from <code>schiff_simulator_v5_rigid.html</code>.</sub>
+
 <table>
   <tr>
     <td align="center"><img src="screenshots/demo.png"><br><sub>Rigid-body mode — Titanic-class hull with live stability stats</sub></td>
@@ -53,3 +57,11 @@ That's it: no `npm install`, no build step, no server.
 ## Project Status
 
 **Prototype.** Functional and self-contained, built as an exploratory physics/simulation project. The two engines take different modeling approaches and are not feature-identical (for example, fire spread and several sandbox tools exist only in the soft-body version).
+
+## How it was made
+
+Built with the help of an AI coding agent (Claude Code).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
